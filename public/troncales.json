@@ -1,0 +1,76 @@
+{
+  "TRONCAL 1": [
+    "TRONCAL 1",
+    "SUB-TRONCAL 1A",
+    "SUB-TRONCAL 1B",
+    "SUB-TRONCAL 1C"
+  ],
+  "TRONCAL 2": [
+    "TRONCAL 2",
+    "SUB-TRONCAL 2A",
+    "SUB-TRONCAL 2B"
+  ],
+  "TRONCAL 3": [
+    "TRONCAL 3",
+    "SUB-TRONCAL 3A",
+    "SUB-TRONCAL 3B",
+    "SUB-TRONCAL 3C"
+  ],
+  "TRONCAL 4": [
+    "TRONCAL 4",
+    "SUB-TRONCAL 4A",
+    "SUB-TRONCAL 4B"
+  ],
+  "TRONCAL 5": [
+    "TRONCAL 5",
+    "SUB-TRONCAL 5A",
+    "SUB-TRONCAL 5B",
+    "SUB-TRONCAL 5C",
+    "SUB-TRONCAL 5D",
+    "SUB-TRONCAL 5E",
+    "SUB-TRONCAL 5F",
+    "SUB-TRONCAL 5G",
+    "SUB-TRONCAL 5H"
+  ],
+  "TRONCAL 6": [
+    "TRONCAL 6",
+    "SUB-TRONCAL 6A",
+    "SUB-TRONCAL 6B",
+    "SUB-TRONCAL 6D",
+    "SUB-TRONCAL 6F"
+  ],
+  "TRONCAL 7": [
+    "TRONCAL 7",
+    "SUB-TRONCAL 7A",
+    "SUB-TRONCAL 7B",
+    "SUB-TRONCAL 7C",
+    "SUB-TRONCAL 7D",
+    "SUB-TRONCAL 7E",
+    "SUB-TRONCAL 7F",
+    "SUB-TRONCAL 7G",
+    "SUB-TRONCAL 7H"
+  ],
+  "TRONCAL 8": [
+    "TRONCAL 8",
+    "SUB-TRONCAL 8A",
+    "SUB-TRONCAL 8B",
+    "SUB-TRONCAL 8C"
+  ],
+  "TRONCAL 10": [
+    "TRONCAL 10",
+    "TRONCAL 10 LOOP 24\" @ 36\"",
+    "SUB-TRONCAL 10A",
+    "SUB-TRONCAL 10B",
+    "SUB-TRONCAL 10C",
+    "SUB-TRONCAL 10E"
+  ],
+  "TRONCAL 11": [
+    "TRONCAL 11"
+  ],
+  "TRONCAL LINEA 12\"": [
+    "TRONCAL LINEA 12\""
+  ],
+  "TRONCAL TRUNK LINE 14\" @16\"": [
+    "TRONCAL TRUNK LINE 14\" @16\""
+  ]
+}
