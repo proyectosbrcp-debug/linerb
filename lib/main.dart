@@ -195,6 +195,8 @@ Future<void> cargarJson() async {
       await prefs.setString('json_troncales_cache', troncalesResponse.body);
       await prefs.setString('json_ramales_cache', ramalesResponse.body);
 
+      if (!mounted) return;
+
       setState(() {
         troncalesJson = json.decode(troncalesResponse.body);
         ramalesJson = List<String>.from(
@@ -217,6 +219,8 @@ Future<void> cargarJson() async {
     final ramalesCache = prefs.getString('json_ramales_cache');
 
     if (troncalesCache != null && ramalesCache != null) {
+      if (!mounted) return;
+
       setState(() {
         troncalesJson = json.decode(troncalesCache);
         ramalesJson = List<String>.from(
@@ -240,6 +244,8 @@ Future<void> cargarJson() async {
 
     final String ramalesData =
         await rootBundle.loadString('assets/data/ramales.json');
+
+    if (!mounted) return;
 
     setState(() {
       troncalesJson = json.decode(troncalesData);
@@ -567,6 +573,8 @@ final ImagePicker picker = ImagePicker();
 Future<void> cargarBorradorLocal() async {
   final prefs = await SharedPreferences.getInstance();
 
+  if (!mounted) return;
+
   final seleccionGuardada = prefs.getString('borrador_seleccionLinea');
 
   if (seleccionGuardada == null || seleccionGuardada != widget.seleccionLinea) {
@@ -622,6 +630,8 @@ void initState() {
     imageQuality: 80,
   );
 
+  if (!mounted) return;
+
   if (imagen != null) {
     setState(() {
       foto1 = File(imagen.path);
@@ -635,6 +645,8 @@ Future<void> tomarFoto2() async {
     imageQuality: 80,
   );
 
+  if (!mounted) return;
+
   if (imagen != null) {
     setState(() {
       foto2 = File(imagen.path);
@@ -647,6 +659,8 @@ Future<void> obtenerCoordenadas() async {
   LocationPermission permiso;
 
   servicioActivo = await Geolocator.isLocationServiceEnabled();
+  if (!mounted) return;
+
   if (!servicioActivo) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Active el GPS del dispositivo")),
@@ -655,9 +669,11 @@ Future<void> obtenerCoordenadas() async {
   }
 
   permiso = await Geolocator.checkPermission();
+  if (!mounted) return;
 
   if (permiso == LocationPermission.denied) {
     permiso = await Geolocator.requestPermission();
+    if (!mounted) return;
   }
 
   if (permiso == LocationPermission.deniedForever ||
@@ -671,6 +687,8 @@ Future<void> obtenerCoordenadas() async {
   final posicion = await Geolocator.getCurrentPosition(
     desiredAccuracy: LocationAccuracy.high,
   );
+
+  if (!mounted) return;
 
   setState(() {
     latitudController.text = posicion.latitude.toString();
@@ -1254,6 +1272,8 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
             ElevatedButton.icon(
               onPressed: () async {
                 await generarPdf();
+                if (!mounted) return;
+
                 final nuevaInspeccion = Inspeccion(
                   linea: widget.seleccionLinea,
                   tipoLinea: widget.tipoLinea,
@@ -1296,6 +1316,8 @@ await prefsBorrador.remove('borrador_responsable');
 await prefsBorrador.remove('borrador_puntoReferencia');
 await prefsBorrador.remove('borrador_estadoLinea');
 await prefsBorrador.remove('borrador_hallazgos');
+
+                if (!mounted) return;
 
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -1588,6 +1610,9 @@ class _HistorialPageState extends State<HistorialPage> {
 
   Future<void> cargarHistorial() async {
     final prefs = await SharedPreferences.getInstance();
+
+    if (!mounted) return;
+
     final historialGuardado =
         prefs.getStringList('historial_inspecciones') ?? [];
 
