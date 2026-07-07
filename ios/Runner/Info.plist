@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>LINERB usa la cámara para registrar fotografías de los hallazgos de una inspección.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>LINERB usa la ubicación mientras la aplicación está abierta para registrar las coordenadas de los hallazgos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>LINERB requiere acceso a la fototeca para seleccionar imágenes asociadas a una inspección.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
