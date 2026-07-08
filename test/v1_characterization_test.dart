@@ -3,7 +3,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:linerb/main.dart';
+import 'package:linerb/core/theme/linerb_app.dart';
+import 'package:linerb/core/utils/date_utils.dart';
+import 'package:linerb/models/hallazgo_inspeccion.dart';
+import 'package:linerb/models/inspeccion.dart';
+import 'package:linerb/pages/avance/avance_page.dart';
+import 'package:linerb/pages/historial/historial_page.dart';
+import 'package:linerb/pages/inspeccion/registro_inspeccion_page.dart';
+import 'package:linerb/pages/login/inicio_page.dart';
+import 'package:linerb/services/datos_app.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
