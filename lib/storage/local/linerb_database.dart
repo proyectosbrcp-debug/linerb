@@ -2,7 +2,7 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqflite;
 
 class LinerbDatabase {
-  static const int version = 2;
+  static const int version = 3;
   static const String defaultName = 'linerb_v2.db';
 
   final sqflite.DatabaseFactory? factory;
@@ -60,6 +60,7 @@ CREATE TABLE inspections (
   diagnostic_notes TEXT
 )
 ''');
+    await _addSyncColumnsOnCreate(db, 'inspections');
 
     await db.execute('''
 CREATE TABLE hallazgos (
@@ -79,6 +80,7 @@ CREATE TABLE hallazgos (
   FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE
 )
 ''');
+    await _addSyncColumnsOnCreate(db, 'hallazgos');
 
     await db.execute('''
 CREATE TABLE draft (
@@ -115,6 +117,7 @@ CREATE TABLE integrity_issues (
 )
 ''');
 
+    await _createSyncQueue(db);
     await _createIndexes(db);
   }
 
@@ -157,8 +160,155 @@ CREATE TABLE IF NOT EXISTS integrity_issues (
   resolution TEXT NOT NULL DEFAULT 'marked'
 )
 ''');
+    }
+
+    if (oldVersion < 3) {
+      await _addSyncColumnsForUpgrade(db, 'inspections');
+      await _addSyncColumnsForUpgrade(db, 'hallazgos');
+      await _createSyncQueue(db);
+      await _backfillSyncMetadata(db, 'inspections');
+      await _backfillSyncMetadata(db, 'hallazgos');
       await _createIndexes(db);
     }
+  }
+
+  Future<void> _addSyncColumnsOnCreate(
+    sqflite.Database db,
+    String table,
+  ) async {
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN global_id TEXT NOT NULL DEFAULT ""',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN created_at TEXT NOT NULL DEFAULT ""',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN updated_at TEXT NOT NULL DEFAULT ""',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN created_by TEXT NOT NULL DEFAULT ""',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN updated_by TEXT NOT NULL DEFAULT ""',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN device_id TEXT NOT NULL DEFAULT ""',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN local_version INTEGER NOT NULL DEFAULT 1',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN remote_version INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE $table ADD COLUMN sync_status TEXT NOT NULL DEFAULT "synced"',
+    );
+    await db.execute('ALTER TABLE $table ADD COLUMN last_sync_at TEXT');
+    await db.execute('ALTER TABLE $table ADD COLUMN deleted_at TEXT');
+  }
+
+  Future<void> _addSyncColumnsForUpgrade(
+    sqflite.Database db,
+    String table,
+  ) async {
+    await _addColumnIfMissing(
+      db,
+      table,
+      'global_id',
+      'TEXT NOT NULL DEFAULT ""',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'created_at',
+      'TEXT NOT NULL DEFAULT ""',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'updated_at',
+      'TEXT NOT NULL DEFAULT ""',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'created_by',
+      'TEXT NOT NULL DEFAULT ""',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'updated_by',
+      'TEXT NOT NULL DEFAULT ""',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'device_id',
+      'TEXT NOT NULL DEFAULT ""',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'local_version',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'remote_version',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      table,
+      'sync_status',
+      'TEXT NOT NULL DEFAULT "synced"',
+    );
+    await _addColumnIfMissing(db, table, 'last_sync_at', 'TEXT');
+    await _addColumnIfMissing(db, table, 'deleted_at', 'TEXT');
+  }
+
+  Future<void> _createSyncQueue(sqflite.Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS sync_queue (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  is_conflict INTEGER NOT NULL DEFAULT 0
+)
+''');
+  }
+
+  Future<void> _backfillSyncMetadata(sqflite.Database db, String table) async {
+    const timestamp = '1970-01-01T00:00:00.000';
+    await db.rawUpdate(
+      '''
+UPDATE $table
+SET global_id = CASE WHEN global_id = '' THEN id ELSE global_id END,
+    created_at = CASE WHEN created_at = '' THEN ? ELSE created_at END,
+    updated_at = CASE WHEN updated_at = '' THEN ? ELSE updated_at END,
+    created_by = CASE WHEN created_by = '' THEN 'legacy' ELSE created_by END,
+    updated_by = CASE WHEN updated_by = '' THEN 'legacy' ELSE updated_by END,
+    device_id = CASE WHEN device_id = '' THEN 'legacy_device' ELSE device_id END,
+    sync_status = CASE WHEN sync_status = '' THEN 'synced' ELSE sync_status END
+WHERE global_id = ''
+   OR created_at = ''
+   OR updated_at = ''
+   OR created_by = ''
+   OR updated_by = ''
+   OR device_id = ''
+   OR sync_status = ''
+''',
+      [timestamp, timestamp],
+    );
   }
 
   Future<void> _createIndexes(sqflite.Database db) async {
@@ -169,6 +319,12 @@ CREATE TABLE IF NOT EXISTS integrity_issues (
       'CREATE INDEX IF NOT EXISTS idx_inspections_invalid ON inspections(is_invalid)',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_sync_status ON inspections(sync_status)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_global_id ON inspections(global_id)',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_hallazgos_draft_id ON hallazgos(draft_id)',
     );
     await db.execute(
@@ -176,6 +332,18 @@ CREATE TABLE IF NOT EXISTS integrity_issues (
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_hallazgos_invalid ON hallazgos(is_invalid)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_hallazgos_sync_status ON hallazgos(sync_status)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_hallazgos_global_id ON hallazgos(global_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_pending ON sync_queue(entity_type, entity_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_next_attempt ON sync_queue(next_attempt_at)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_migration_metadata_value ON migration_metadata(value)',

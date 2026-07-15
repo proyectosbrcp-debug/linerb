@@ -1,17 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
+import '../../core/time/app_clock.dart';
 import '../../core/utils/stable_id.dart';
 import '../../models/draft_data.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../models/inspeccion.dart';
+import '../../models/sync_models.dart';
 import '../../services/datos_app.dart';
 import '../draft_storage.dart';
 import '../inspection_storage.dart';
 import '../migration/migration_target.dart';
 import '../storage_exceptions.dart';
 import 'linerb_database.dart';
+import 'local_sync_queue_storage.dart';
 
 class LocalDatabaseStorage
     implements InspectionStorage, DraftStorage, MigrationTarget {
@@ -21,12 +25,20 @@ class LocalDatabaseStorage
   final List<Inspeccion>? inspeccionesMemoria;
   final bool failWrites;
   final int? failOnHallazgoIndex;
+  final bool failSyncQueueWrites;
+  final Clock clock;
+  final Future<String> Function()? deviceIdProvider;
+  final LocalSyncQueueStorage? syncQueueStorage;
 
-  const LocalDatabaseStorage({
+  LocalDatabaseStorage({
     required this.database,
     this.inspeccionesMemoria,
     this.failWrites = false,
     this.failOnHallazgoIndex,
+    this.failSyncQueueWrites = false,
+    this.clock = const SystemClock(),
+    this.deviceIdProvider,
+    this.syncQueueStorage,
   });
 
   List<Inspeccion> get _inspeccionesMemoria =>
@@ -89,6 +101,10 @@ class LocalDatabaseStorage
     try {
       final db = await database.open();
       final createdOrder = await _nextInspectionOrder();
+      final now = clock.now();
+      final nowIso = now.toIso8601String();
+      final deviceId = await _deviceId();
+      const userId = 'local_user';
       final id = StableId.fromParts('db_inspection', [
         inspeccion.linea,
         inspeccion.tipoLinea,
@@ -98,9 +114,16 @@ class LocalDatabaseStorage
         inspeccion.puntoReferencia,
         inspeccion.observaciones,
       ]);
+      final queue =
+          syncQueueStorage ??
+          LocalSyncQueueStorage(
+            database: database,
+            clock: clock,
+            failWrites: failSyncQueueWrites,
+          );
 
       await db.transaction((txn) async {
-        final inserted = await txn.insert('inspections', {
+        final inspectionRow = {
           'id': id,
           'linea': inspeccion.linea,
           'tipo_linea': inspeccion.tipoLinea,
@@ -112,19 +135,63 @@ class LocalDatabaseStorage
           'source': 'app',
           'source_key': null,
           'created_order': createdOrder,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          'global_id': id,
+          'created_at': nowIso,
+          'updated_at': nowIso,
+          'created_by': userId,
+          'updated_by': userId,
+          'device_id': deviceId,
+          'local_version': 1,
+          'remote_version': 0,
+          'sync_status': syncStatusToStorage(SyncStatus.pendingCreate),
+          'last_sync_at': null,
+          'deleted_at': null,
+        };
+        final inserted = await txn.insert(
+          'inspections',
+          inspectionRow,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
 
         if (inserted != 0) {
+          await queue.enqueueInTransaction(
+            txn,
+            SyncQueueOperation(
+              entityType: SyncEntityType.inspection,
+              entityId: id,
+              operation: SyncOperationType.create,
+              payloadJson: _inspectionPayloadJson(inspectionRow),
+            ),
+          );
+
           for (var index = 0; index < hallazgos.length; index++) {
             if (failOnHallazgoIndex == index) {
               throw const StorageWriteException(
                 'Fallo simulado guardando hallazgo local',
               );
             }
+            final hallazgoRow = _hallazgoToRow(
+              hallazgos[index],
+              index,
+              inspectionId: id,
+              nowIso: nowIso,
+              userId: userId,
+              deviceId: deviceId,
+              syncStatus: SyncStatus.pendingCreate,
+            );
             await txn.insert(
               'hallazgos',
-              _hallazgoToRow(hallazgos[index], index, inspectionId: id),
+              hallazgoRow,
               conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+            await queue.enqueueInTransaction(
+              txn,
+              SyncQueueOperation(
+                entityType: SyncEntityType.finding,
+                entityId: hallazgoRow['id'] as String,
+                operation: SyncOperationType.create,
+                payloadJson: _hallazgoPayloadJson(hallazgoRow),
+              ),
             );
           }
         }
@@ -276,6 +343,7 @@ class LocalDatabaseStorage
     }
 
     final db = await database.open();
+    const legacyTimestamp = '1970-01-01T00:00:00.000';
     final inserted = await db.insert('inspections', {
       'id': id,
       'linea': inspeccion.linea,
@@ -288,6 +356,17 @@ class LocalDatabaseStorage
       'source': 'v1_shared_preferences',
       'source_key': sourceKey,
       'created_order': createdOrder,
+      'global_id': id,
+      'created_at': legacyTimestamp,
+      'updated_at': legacyTimestamp,
+      'created_by': 'legacy',
+      'updated_by': 'legacy',
+      'device_id': 'legacy_device',
+      'local_version': 1,
+      'remote_version': 0,
+      'sync_status': syncStatusToStorage(SyncStatus.synced),
+      'last_sync_at': null,
+      'deleted_at': null,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
     return inserted != 0;
@@ -364,20 +443,26 @@ WHERE i.linea = ?
     int index, {
     String? draftId,
     String? inspectionId,
+    String? nowIso,
+    String userId = 'local_user',
+    String deviceId = 'local_device',
+    SyncStatus syncStatus = SyncStatus.synced,
   }) {
+    final id = StableId.fromParts('hallazgo', [
+      draftId,
+      inspectionId,
+      index,
+      hallazgo.tipo,
+      hallazgo.detalle,
+      hallazgo.latitud,
+      hallazgo.longitud,
+      hallazgo.descripcion,
+      hallazgo.foto1Path,
+      hallazgo.foto2Path,
+    ]);
+    final timestamp = nowIso ?? clock.now().toIso8601String();
     return {
-      'id': StableId.fromParts('hallazgo', [
-        draftId,
-        inspectionId,
-        index,
-        hallazgo.tipo,
-        hallazgo.detalle,
-        hallazgo.latitud,
-        hallazgo.longitud,
-        hallazgo.descripcion,
-        hallazgo.foto1Path,
-        hallazgo.foto2Path,
-      ]),
+      'id': id,
       'inspection_id': inspectionId,
       'draft_id': draftId,
       'tipo': hallazgo.tipo,
@@ -388,7 +473,69 @@ WHERE i.linea = ?
       'foto1_path': hallazgo.foto1Path,
       'foto2_path': hallazgo.foto2Path,
       'created_order': index,
+      'global_id': id,
+      'created_at': timestamp,
+      'updated_at': timestamp,
+      'created_by': userId,
+      'updated_by': userId,
+      'device_id': deviceId,
+      'local_version': 1,
+      'remote_version': 0,
+      'sync_status': syncStatusToStorage(syncStatus),
+      'last_sync_at': null,
+      'deleted_at': null,
     };
+  }
+
+  Future<String> _deviceId() async {
+    final provider = deviceIdProvider;
+    if (provider == null) return 'local_device';
+    return provider();
+  }
+
+  String _inspectionPayloadJson(Map<String, Object?> row) {
+    return jsonEncode({
+      'global_id': row['global_id'],
+      'linea': row['linea'],
+      'tipo_linea': row['tipo_linea'],
+      'responsable': row['responsable'],
+      'fecha_iso': row['fecha_iso'],
+      'estado_linea': row['estado_linea'],
+      'punto_referencia': row['punto_referencia'],
+      'observaciones': row['observaciones'],
+      'created_at': row['created_at'],
+      'updated_at': row['updated_at'],
+      'created_by': row['created_by'],
+      'updated_by': row['updated_by'],
+      'device_id': row['device_id'],
+      'local_version': row['local_version'],
+      'remote_version': row['remote_version'],
+      'sync_status': row['sync_status'],
+      'last_sync_at': row['last_sync_at'],
+      'deleted_at': row['deleted_at'],
+    });
+  }
+
+  String _hallazgoPayloadJson(Map<String, Object?> row) {
+    return jsonEncode({
+      'global_id': row['global_id'],
+      'inspection_id': row['inspection_id'],
+      'tipo': row['tipo'],
+      'detalle': row['detalle'],
+      'latitud': row['latitud'],
+      'longitud': row['longitud'],
+      'descripcion': row['descripcion'],
+      'created_at': row['created_at'],
+      'updated_at': row['updated_at'],
+      'created_by': row['created_by'],
+      'updated_by': row['updated_by'],
+      'device_id': row['device_id'],
+      'local_version': row['local_version'],
+      'remote_version': row['remote_version'],
+      'sync_status': row['sync_status'],
+      'last_sync_at': row['last_sync_at'],
+      'deleted_at': row['deleted_at'],
+    });
   }
 
   HallazgoInspeccion _hallazgoDesdeRow(Map<String, Object?> row) {

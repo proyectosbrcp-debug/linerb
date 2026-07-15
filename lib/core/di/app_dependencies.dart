@@ -4,10 +4,13 @@ import '../../controllers/inspection_registration_controller.dart';
 import '../../controllers/progress_controller.dart';
 import '../../controllers/selection_line_controller.dart';
 import '../../core/runtime/app_runtime_initializer.dart';
+import '../../core/time/app_clock.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../repositories/dashboard_repository.dart';
 import '../../repositories/draft_repository.dart';
 import '../../repositories/inspection_repository.dart';
+import '../../repositories/sync_repository.dart';
+import '../../services/device_identity_service.dart';
 import '../../storage/catalog_cache_storage.dart';
 import '../../storage/draft_storage.dart';
 import '../../storage/fallback_draft_storage.dart';
@@ -17,13 +20,27 @@ import '../../storage/integrity/local_data_integrity_service.dart';
 import '../../storage/inspection_storage.dart';
 import '../../storage/local/linerb_database.dart';
 import '../../storage/local/local_database_storage.dart';
+import '../../storage/local/local_sync_queue_storage.dart';
 import '../../storage/migration/v1_data_migration_service.dart';
 import '../../storage/shared_preferences_storage.dart';
 
 class AppDependencies {
+  static const Clock clock = SystemClock();
+  static final DeviceIdentityService deviceIdentityService =
+      DeviceIdentityService(clock: clock.now);
   static final LinerbDatabase linerbDatabase = LinerbDatabase();
+  static final LocalSyncQueueStorage syncQueueStorage = LocalSyncQueueStorage(
+    database: linerbDatabase,
+    clock: clock,
+  );
   static final LocalDatabaseStorage localDatabaseStorage = LocalDatabaseStorage(
     database: linerbDatabase,
+    clock: clock,
+    deviceIdProvider: deviceIdentityService.deviceId,
+    syncQueueStorage: syncQueueStorage,
+  );
+  static final SyncRepository syncRepository = LocalSyncRepository(
+    queueStorage: syncQueueStorage,
   );
 
   static const SharedPreferencesStorage sharedPreferencesStorage =

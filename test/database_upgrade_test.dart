@@ -36,11 +36,14 @@ void main() {
 
     final db = await database.open();
 
-    expect(await db.getVersion(), 2);
+    expect(await db.getVersion(), 3);
     expect(await _hasColumn(db, 'inspections', 'is_invalid'), isTrue);
     expect(await _hasColumn(db, 'hallazgos', 'is_invalid'), isTrue);
     expect(await _hasColumn(db, 'draft', 'is_invalid'), isTrue);
+    expect(await _hasColumn(db, 'inspections', 'sync_status'), isTrue);
+    expect(await _hasColumn(db, 'hallazgos', 'sync_status'), isTrue);
     expect(await _tableExists(db, 'integrity_issues'), isTrue);
+    expect(await _tableExists(db, 'sync_queue'), isTrue);
 
     await database.close();
   });
@@ -58,7 +61,7 @@ void main() {
       final inspections = await db.query('inspections');
       final hallazgos = await db.query('hallazgos');
 
-      expect(await db.getVersion(), 2);
+      expect(await db.getVersion(), 3);
       expect(inspections, hasLength(2));
       expect(
         inspections.where((row) => row['source_key'] == null),
@@ -87,7 +90,7 @@ void main() {
         whereArgs: ['duplicada'],
       );
 
-      expect(await db.getVersion(), 2);
+      expect(await db.getVersion(), 3);
       expect(rows, hasLength(2));
       expect(await _hasColumn(db, 'inspections', 'is_invalid'), isTrue);
 
@@ -106,7 +109,7 @@ void main() {
     final inspections = await db.query('inspections');
     final hallazgos = await db.query('hallazgos');
 
-    expect(await db.getVersion(), 2);
+    expect(await db.getVersion(), 3);
     expect(inspections, hasLength(1));
     expect(hallazgos, hasLength(1));
     expect(await _hasColumn(db, 'inspections', 'diagnostic_notes'), isTrue);
