@@ -6,20 +6,18 @@ import '../../core/utils/date_utils.dart';
 
 class AvancePage extends StatelessWidget {
   final List<String> lineas;
-  final ProgressController progressController;
+  final ProgressController? progressController;
 
-  const AvancePage({
-    super.key,
-    required this.lineas,
-    this.progressController = AppDependencies.progressController,
-  });
+  const AvancePage({super.key, required this.lineas, this.progressController});
 
   DateTime? ultimaInspeccion(String linea) {
-    return progressController.ultimaInspeccion(linea);
+    return (progressController ?? AppDependencies.progressController)
+        .ultimaInspeccion(linea);
   }
 
   String estadoSemaforo(DateTime? fecha) {
-    return progressController.estadoSemaforo(fecha);
+    return (progressController ?? AppDependencies.progressController)
+        .estadoSemaforo(fecha);
   }
 
   @override

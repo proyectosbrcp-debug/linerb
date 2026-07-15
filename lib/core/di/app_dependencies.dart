@@ -7,42 +7,60 @@ import '../../repositories/draft_repository.dart';
 import '../../repositories/inspection_repository.dart';
 import '../../storage/catalog_cache_storage.dart';
 import '../../storage/draft_storage.dart';
+import '../../storage/fallback_draft_storage.dart';
+import '../../storage/fallback_inspection_storage.dart';
 import '../../storage/inspection_storage.dart';
+import '../../storage/local/linerb_database.dart';
+import '../../storage/local/local_database_storage.dart';
+import '../../storage/migration/v1_data_migration_service.dart';
 import '../../storage/shared_preferences_storage.dart';
 
 class AppDependencies {
+  static final LinerbDatabase linerbDatabase = LinerbDatabase();
+  static final LocalDatabaseStorage localDatabaseStorage = LocalDatabaseStorage(
+    database: linerbDatabase,
+  );
+
   static const SharedPreferencesStorage sharedPreferencesStorage =
       SharedPreferencesStorage();
 
-  static const InspectionStorage inspectionStorage = sharedPreferencesStorage;
-  static const DraftStorage draftStorage = sharedPreferencesStorage;
+  static final InspectionStorage inspectionStorage = FallbackInspectionStorage(
+    localStorage: localDatabaseStorage,
+    legacyStorage: sharedPreferencesStorage,
+    migrationTarget: localDatabaseStorage,
+  );
+  static final DraftStorage draftStorage = FallbackDraftStorage(
+    localStorage: localDatabaseStorage,
+    legacyStorage: sharedPreferencesStorage,
+    migrationTarget: localDatabaseStorage,
+  );
   static const CatalogCacheStorage catalogCacheStorage =
       sharedPreferencesStorage;
 
-  static const InspectionRepository inspectionRepository =
+  static final InspectionRepository inspectionRepository =
       CurrentInspectionRepository(storage: inspectionStorage);
-  static const DraftRepository draftRepository = CurrentDraftRepository(
+  static final DraftRepository draftRepository = CurrentDraftRepository(
     storage: draftStorage,
   );
   static const CatalogRepository catalogRepository = CurrentCatalogRepository(
     storage: catalogCacheStorage,
   );
+  static final V1DataMigrationService v1DataMigrationService =
+      V1DataMigrationService(target: localDatabaseStorage);
 
   static SelectionLineController selectionLineController() {
     return SelectionLineController(catalogRepository: catalogRepository);
   }
 
   static InspectionRegistrationController inspectionRegistrationController() {
-    return const InspectionRegistrationController(
-      draftRepository: draftRepository,
-    );
+    return InspectionRegistrationController(draftRepository: draftRepository);
   }
 
   static HistoryController historyController() {
     return HistoryController(inspectionRepository: inspectionRepository);
   }
 
-  static const ProgressController progressController = ProgressController(
+  static final ProgressController progressController = ProgressController(
     inspectionRepository: inspectionRepository,
   );
 }
