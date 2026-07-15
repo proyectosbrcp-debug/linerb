@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../controllers/history_controller.dart';
+import '../../core/di/app_dependencies.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/inspeccion.dart';
 
@@ -12,7 +13,8 @@ class HistorialPage extends StatefulWidget {
 }
 
 class _HistorialPageState extends State<HistorialPage> {
-  final HistoryController historyController = HistoryController();
+  final HistoryController historyController =
+      AppDependencies.historyController();
   List<Inspeccion> inspecciones = [];
 
   @override

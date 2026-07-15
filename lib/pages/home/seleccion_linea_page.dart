@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/di/app_dependencies.dart';
 import '../../controllers/selection_line_controller.dart';
 import '../avance/avance_page.dart';
 import '../historial/historial_page.dart';
@@ -16,7 +17,7 @@ class SeleccionLineaPage extends StatefulWidget {
 
 class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
   final SelectionLineController selectionLineController =
-      SelectionLineController();
+      AppDependencies.selectionLineController();
   Map<String, dynamic> troncalesJson = {};
   List<String> ramalesJson = [];
 

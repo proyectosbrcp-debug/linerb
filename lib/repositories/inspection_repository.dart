@@ -1,8 +1,6 @@
-import 'dart:convert';
-
 import '../models/inspeccion.dart';
-import '../services/datos_app.dart';
-import '../storage/shared_preferences_storage.dart';
+import '../storage/inspection_storage.dart';
+import '../storage/storage_exceptions.dart';
 
 abstract class InspectionRepository {
   List<Inspeccion> obtenerInspecciones();
@@ -17,72 +15,36 @@ abstract class InspectionRepository {
 }
 
 class CurrentInspectionRepository implements InspectionRepository {
-  final SharedPreferencesStorage storage;
+  final InspectionStorage storage;
 
-  const CurrentInspectionRepository({
-    this.storage = const SharedPreferencesStorage(),
-  });
+  const CurrentInspectionRepository({required this.storage});
 
   @override
   List<Inspeccion> obtenerInspecciones() {
-    return DatosApp.inspecciones;
+    return storage.obtenerInspeccionesMemoria();
   }
 
   @override
   void agregarInspeccion(Inspeccion inspeccion) {
-    DatosApp.inspecciones.add(inspeccion);
+    storage.agregarInspeccionMemoria(inspeccion);
   }
 
   @override
   DateTime? ultimaInspeccion(String linea) {
-    final registros = DatosApp.inspecciones
-        .where((i) => i.linea == linea)
-        .toList();
-
-    if (registros.isEmpty) return null;
-
-    registros.sort((a, b) => b.fecha.compareTo(a.fecha));
-    return registros.first.fecha;
+    return storage.ultimaInspeccionMemoria(linea);
   }
 
   @override
   Future<List<Inspeccion>> cargarHistorial() async {
-    final prefs = await storage.instance();
-    final historialGuardado =
-        prefs.getStringList('historial_inspecciones') ?? [];
-
-    return historialGuardado.map((registro) {
-      final data = jsonDecode(registro);
-
-      return Inspeccion(
-        linea: data['linea'],
-        tipoLinea: data['tipoLinea'],
-        responsable: data['responsable'],
-        fecha: DateTime.parse(data['fecha']),
-        estadoLinea: data['estadoLinea'],
-        puntoReferencia: data['puntoReferencia'],
-        observaciones: data['observaciones'],
-      );
-    }).toList();
+    try {
+      return await storage.cargarHistorial();
+    } on StorageNotFoundException {
+      return [];
+    }
   }
 
   @override
-  Future<void> guardarEnHistorial(Inspeccion inspeccion) async {
-    final prefs = await storage.instance();
-    final historialActual = prefs.getStringList('historial_inspecciones') ?? [];
-
-    final registroJson = jsonEncode({
-      'linea': inspeccion.linea,
-      'tipoLinea': inspeccion.tipoLinea,
-      'responsable': inspeccion.responsable,
-      'fecha': inspeccion.fecha.toIso8601String(),
-      'estadoLinea': inspeccion.estadoLinea,
-      'puntoReferencia': inspeccion.puntoReferencia,
-      'observaciones': inspeccion.observaciones,
-    });
-
-    historialActual.add(registroJson);
-
-    await prefs.setStringList('historial_inspecciones', historialActual);
+  Future<void> guardarEnHistorial(Inspeccion inspeccion) {
+    return storage.agregarInspeccionHistorial(inspeccion);
   }
 }

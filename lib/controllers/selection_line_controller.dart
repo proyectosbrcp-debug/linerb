@@ -4,8 +4,7 @@ class SelectionLineController {
   final CatalogRepository catalogRepository;
   CatalogData? catalogData;
 
-  SelectionLineController({CatalogRepository? catalogRepository})
-    : catalogRepository = catalogRepository ?? const CurrentCatalogRepository();
+  SelectionLineController({required this.catalogRepository});
 
   Future<CatalogData?> cargarCatalogos() async {
     catalogData = await catalogRepository.cargarCatalogos();

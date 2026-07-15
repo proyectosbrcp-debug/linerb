@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../controllers/inspection_registration_controller.dart';
+import '../../core/di/app_dependencies.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../models/inspeccion.dart';
@@ -52,9 +53,9 @@ class ResumenInspeccionPage extends StatefulWidget {
 
 class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
   final InspectionRepository inspectionRepository =
-      const CurrentInspectionRepository();
+      AppDependencies.inspectionRepository;
   final InspectionRegistrationController registroController =
-      const InspectionRegistrationController();
+      AppDependencies.inspectionRegistrationController();
   late TextEditingController observacionGeneralController;
 
   @override

@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../controllers/inspection_registration_controller.dart';
+import '../../core/di/app_dependencies.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../repositories/draft_repository.dart';
@@ -28,7 +29,7 @@ class RegistroInspeccionPage extends StatefulWidget {
 
 class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
   final InspectionRegistrationController registroController =
-      const InspectionRegistrationController();
+      AppDependencies.inspectionRegistrationController();
   String estadoLinea = 'Operativa';
 
   String hallazgoSeleccionado = 'Corrosión';

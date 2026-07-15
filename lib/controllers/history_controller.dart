@@ -5,9 +5,7 @@ class HistoryController {
   final InspectionRepository inspectionRepository;
   List<Inspeccion> inspecciones = [];
 
-  HistoryController({InspectionRepository? inspectionRepository})
-    : inspectionRepository =
-          inspectionRepository ?? const CurrentInspectionRepository();
+  HistoryController({required this.inspectionRepository});
 
   Future<List<Inspeccion>> cargarHistorial() async {
     inspecciones = await inspectionRepository.cargarHistorial();

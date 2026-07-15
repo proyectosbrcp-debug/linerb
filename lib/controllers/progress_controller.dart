@@ -3,9 +3,7 @@ import '../repositories/inspection_repository.dart';
 class ProgressController {
   final InspectionRepository inspectionRepository;
 
-  const ProgressController({
-    this.inspectionRepository = const CurrentInspectionRepository(),
-  });
+  const ProgressController({required this.inspectionRepository});
 
   DateTime? ultimaInspeccion(String linea) {
     return inspectionRepository.ultimaInspeccion(linea);

@@ -3,9 +3,7 @@ import '../repositories/draft_repository.dart';
 class InspectionRegistrationController {
   final DraftRepository draftRepository;
 
-  const InspectionRegistrationController({
-    this.draftRepository = const CurrentDraftRepository(),
-  });
+  const InspectionRegistrationController({required this.draftRepository});
 
   Future<void> guardarBorrador(DraftData borrador) {
     return draftRepository.guardarBorrador(borrador);

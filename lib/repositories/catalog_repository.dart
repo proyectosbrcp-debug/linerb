@@ -4,30 +4,23 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/constants/catalog_urls.dart';
-import '../storage/shared_preferences_storage.dart';
+import '../models/catalog_data.dart';
+import '../storage/catalog_cache_storage.dart';
+import '../storage/storage_exceptions.dart';
 
-class CatalogData {
-  final Map<String, dynamic> troncalesJson;
-  final List<String> ramalesJson;
-
-  const CatalogData({required this.troncalesJson, required this.ramalesJson});
-}
+export '../models/catalog_data.dart';
 
 abstract class CatalogRepository {
   Future<CatalogData?> cargarCatalogos();
 }
 
 class CurrentCatalogRepository implements CatalogRepository {
-  final SharedPreferencesStorage storage;
+  final CatalogCacheStorage storage;
 
-  const CurrentCatalogRepository({
-    this.storage = const SharedPreferencesStorage(),
-  });
+  const CurrentCatalogRepository({required this.storage});
 
   @override
   Future<CatalogData?> cargarCatalogos() async {
-    final prefs = await storage.instance();
-
     try {
       print("========== CONSULTANDO FIREBASE ==========");
 
@@ -37,8 +30,10 @@ class CurrentCatalogRepository implements CatalogRepository {
 
       if (troncalesResponse.statusCode == 200 &&
           ramalesResponse.statusCode == 200) {
-        await prefs.setString('json_troncales_cache', troncalesResponse.body);
-        await prefs.setString('json_ramales_cache', ramalesResponse.body);
+        await storage.guardarCatalogosCache(
+          troncalesJson: troncalesResponse.body,
+          ramalesJson: ramalesResponse.body,
+        );
 
         print("✅ JSON FIREBASE CARGADO Y GUARDADO EN CACHE");
 
@@ -59,17 +54,13 @@ class CurrentCatalogRepository implements CatalogRepository {
     try {
       print("========== CARGANDO CACHE LOCAL ==========");
 
-      final troncalesCache = prefs.getString('json_troncales_cache');
-      final ramalesCache = prefs.getString('json_ramales_cache');
+      final catalogos = await storage.cargarCatalogosCache();
 
-      if (troncalesCache != null && ramalesCache != null) {
-        print("✅ JSON CARGADO DESDE CACHE LOCAL");
+      print("✅ JSON CARGADO DESDE CACHE LOCAL");
 
-        return CatalogData(
-          troncalesJson: Map<String, dynamic>.from(json.decode(troncalesCache)),
-          ramalesJson: List<String>.from(json.decode(ramalesCache)['ramales']),
-        );
-      }
+      return catalogos;
+    } on StorageNotFoundException {
+      // Mantiene el comportamiento previo: si no hay cache, intenta assets.
     } catch (e) {
       print("⚠ No se pudo cargar cache local");
       print(e);

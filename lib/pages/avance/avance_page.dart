@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../controllers/progress_controller.dart';
+import '../../core/di/app_dependencies.dart';
 import '../../core/utils/date_utils.dart';
 
 class AvancePage extends StatelessWidget {
@@ -10,7 +11,7 @@ class AvancePage extends StatelessWidget {
   const AvancePage({
     super.key,
     required this.lineas,
-    this.progressController = const ProgressController(),
+    this.progressController = AppDependencies.progressController,
   });
 
   DateTime? ultimaInspeccion(String linea) {
