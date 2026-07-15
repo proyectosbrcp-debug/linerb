@@ -107,6 +107,14 @@ class SharedPreferencesStorage
   }
 
   @override
+  Future<void> agregarInspeccionCompleta(
+    Inspeccion inspeccion,
+    List<HallazgoInspeccion> hallazgos,
+  ) {
+    return agregarInspeccionHistorial(inspeccion);
+  }
+
+  @override
   Future<void> guardarBorrador(DraftData borrador) async {
     try {
       final prefs = await instance();

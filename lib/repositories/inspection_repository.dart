@@ -1,3 +1,4 @@
+import '../models/hallazgo_inspeccion.dart';
 import '../models/inspeccion.dart';
 import '../storage/inspection_storage.dart';
 import '../storage/storage_exceptions.dart';
@@ -12,6 +13,11 @@ abstract class InspectionRepository {
   Future<List<Inspeccion>> cargarHistorial();
 
   Future<void> guardarEnHistorial(Inspeccion inspeccion);
+
+  Future<void> guardarInspeccionCompleta(
+    Inspeccion inspeccion,
+    List<HallazgoInspeccion> hallazgos,
+  );
 }
 
 class CurrentInspectionRepository implements InspectionRepository {
@@ -46,5 +52,13 @@ class CurrentInspectionRepository implements InspectionRepository {
   @override
   Future<void> guardarEnHistorial(Inspeccion inspeccion) {
     return storage.agregarInspeccionHistorial(inspeccion);
+  }
+
+  @override
+  Future<void> guardarInspeccionCompleta(
+    Inspeccion inspeccion,
+    List<HallazgoInspeccion> hallazgos,
+  ) {
+    return storage.agregarInspeccionCompleta(inspeccion, hallazgos);
   }
 }

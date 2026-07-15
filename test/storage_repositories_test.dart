@@ -248,4 +248,12 @@ class FakeInspectionStorage implements InspectionStorage {
     if (writeError != null) throw writeError!;
     historial.add(inspeccion);
   }
+
+  @override
+  Future<void> agregarInspeccionCompleta(
+    Inspeccion inspeccion,
+    List<HallazgoInspeccion> hallazgos,
+  ) {
+    return agregarInspeccionHistorial(inspeccion);
+  }
 }

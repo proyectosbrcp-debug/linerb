@@ -2,6 +2,7 @@ import '../../controllers/history_controller.dart';
 import '../../controllers/inspection_registration_controller.dart';
 import '../../controllers/progress_controller.dart';
 import '../../controllers/selection_line_controller.dart';
+import '../../core/runtime/app_runtime_initializer.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../repositories/draft_repository.dart';
 import '../../repositories/inspection_repository.dart';
@@ -47,6 +48,23 @@ class AppDependencies {
   );
   static final V1DataMigrationService v1DataMigrationService =
       V1DataMigrationService(target: localDatabaseStorage);
+  static final AppRuntimeInitializer runtimeInitializer = AppRuntimeInitializer(
+    openDatabase: () async {
+      await linerbDatabase.open();
+    },
+    migrate: () async {
+      await v1DataMigrationService.migrate();
+      await localDatabaseStorage.hydrateMemoryFromDatabase();
+    },
+  );
+
+  static RuntimeInitializationStatus get runtimeStatus {
+    return runtimeInitializer.status;
+  }
+
+  static Future<RuntimeInitializationResult> initialize() {
+    return runtimeInitializer.initialize();
+  }
 
   static SelectionLineController selectionLineController() {
     return SelectionLineController(catalogRepository: catalogRepository);

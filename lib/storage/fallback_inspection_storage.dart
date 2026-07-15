@@ -1,4 +1,5 @@
 import '../models/inspeccion.dart';
+import '../models/hallazgo_inspeccion.dart';
 import 'inspection_storage.dart';
 import 'migration/migration_target.dart';
 
@@ -46,6 +47,18 @@ class FallbackInspectionStorage implements InspectionStorage {
     }
 
     return legacyStorage.agregarInspeccionHistorial(inspeccion);
+  }
+
+  @override
+  Future<void> agregarInspeccionCompleta(
+    Inspeccion inspeccion,
+    List<HallazgoInspeccion> hallazgos,
+  ) async {
+    if (await _migrationCompleted()) {
+      return localStorage.agregarInspeccionCompleta(inspeccion, hallazgos);
+    }
+
+    return legacyStorage.agregarInspeccionCompleta(inspeccion, hallazgos);
   }
 
   Future<bool> _migrationCompleted() async {

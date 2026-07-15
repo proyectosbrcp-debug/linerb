@@ -202,7 +202,10 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
 
                 inspectionRepository.agregarInspeccion(nuevaInspeccion);
 
-                await inspectionRepository.guardarEnHistorial(nuevaInspeccion);
+                await inspectionRepository.guardarInspeccionCompleta(
+                  nuevaInspeccion,
+                  widget.hallazgos,
+                );
 
                 await registroController.borrarBorrador();
 

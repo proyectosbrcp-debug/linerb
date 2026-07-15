@@ -1,3 +1,4 @@
+import '../models/hallazgo_inspeccion.dart';
 import '../models/inspeccion.dart';
 
 abstract class InspectionStorage {
@@ -10,4 +11,9 @@ abstract class InspectionStorage {
   Future<List<Inspeccion>> cargarHistorial();
 
   Future<void> agregarInspeccionHistorial(Inspeccion inspeccion);
+
+  Future<void> agregarInspeccionCompleta(
+    Inspeccion inspeccion,
+    List<HallazgoInspeccion> hallazgos,
+  );
 }

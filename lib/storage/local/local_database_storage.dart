@@ -72,6 +72,14 @@ class LocalDatabaseStorage
 
   @override
   Future<void> agregarInspeccionHistorial(Inspeccion inspeccion) async {
+    return agregarInspeccionCompleta(inspeccion, const []);
+  }
+
+  @override
+  Future<void> agregarInspeccionCompleta(
+    Inspeccion inspeccion,
+    List<HallazgoInspeccion> hallazgos,
+  ) async {
     if (failWrites) {
       throw const StorageWriteException('Fallo simulado de escritura local');
     }
@@ -89,19 +97,31 @@ class LocalDatabaseStorage
         inspeccion.observaciones,
       ]);
 
-      await db.insert('inspections', {
-        'id': id,
-        'linea': inspeccion.linea,
-        'tipo_linea': inspeccion.tipoLinea,
-        'responsable': inspeccion.responsable,
-        'fecha_iso': inspeccion.fecha.toIso8601String(),
-        'estado_linea': inspeccion.estadoLinea,
-        'punto_referencia': inspeccion.puntoReferencia,
-        'observaciones': inspeccion.observaciones,
-        'source': 'app',
-        'source_key': null,
-        'created_order': createdOrder,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      await db.transaction((txn) async {
+        final inserted = await txn.insert('inspections', {
+          'id': id,
+          'linea': inspeccion.linea,
+          'tipo_linea': inspeccion.tipoLinea,
+          'responsable': inspeccion.responsable,
+          'fecha_iso': inspeccion.fecha.toIso8601String(),
+          'estado_linea': inspeccion.estadoLinea,
+          'punto_referencia': inspeccion.puntoReferencia,
+          'observaciones': inspeccion.observaciones,
+          'source': 'app',
+          'source_key': null,
+          'created_order': createdOrder,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+        if (inserted != 0) {
+          for (var index = 0; index < hallazgos.length; index++) {
+            await txn.insert(
+              'hallazgos',
+              _hallazgoToRow(hallazgos[index], index, inspectionId: id),
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+          }
+        }
+      });
     } catch (e) {
       throw StorageWriteException('No se pudo guardar inspección local', e);
     }
@@ -285,6 +305,33 @@ class LocalDatabaseStorage
     return result.single['total'] as int;
   }
 
+  Future<int> hallazgoCountForInspection(String linea) async {
+    final db = await database.open();
+    final result = await db.rawQuery(
+      '''
+SELECT COUNT(h.id) AS total
+FROM hallazgos h
+INNER JOIN inspections i ON i.id = h.inspection_id
+WHERE i.linea = ?
+''',
+      [linea],
+    );
+    return result.single['total'] as int;
+  }
+
+  Future<void> hydrateMemoryFromDatabase() async {
+    try {
+      final historial = await cargarHistorial();
+      for (final inspeccion in historial) {
+        if (!_containsInspection(inspeccion)) {
+          _inspeccionesMemoria.add(inspeccion);
+        }
+      }
+    } on StorageNotFoundException {
+      // Sin historial local todavía.
+    }
+  }
+
   Future<int> _nextInspectionOrder() async {
     final db = await database.open();
     final result = await db.rawQuery(
@@ -347,5 +394,17 @@ class LocalDatabaseStorage
       foto1Path: row['foto1_path'] as String?,
       foto2Path: row['foto2_path'] as String?,
     );
+  }
+
+  bool _containsInspection(Inspeccion inspeccion) {
+    return _inspeccionesMemoria.any((item) {
+      return item.linea == inspeccion.linea &&
+          item.tipoLinea == inspeccion.tipoLinea &&
+          item.responsable == inspeccion.responsable &&
+          item.fecha == inspeccion.fecha &&
+          item.estadoLinea == inspeccion.estadoLinea &&
+          item.puntoReferencia == inspeccion.puntoReferencia &&
+          item.observaciones == inspeccion.observaciones;
+    });
   }
 }
