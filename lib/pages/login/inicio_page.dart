@@ -24,7 +24,10 @@ class _InicioPageState extends State<InicioPage> {
         centerTitle: true,
         backgroundColor: const Color(0xFF0D47A1),
         foregroundColor: Colors.white,
-        title: const Text("LINERB", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          "LINERB",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -86,12 +89,15 @@ class _InicioPageState extends State<InicioPage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => SeleccionLineaPage(usuario: usuario),
+                      builder: (context) =>
+                          SeleccionLineaPage(usuario: usuario),
                     ),
                   );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Usuario o contraseña incorrectos")),
+                    const SnackBar(
+                      content: Text("Usuario o contraseña incorrectos"),
+                    ),
                   );
                 }
               },

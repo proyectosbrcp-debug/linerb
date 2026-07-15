@@ -1,11 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/constants/catalog_urls.dart';
+import '../../controllers/selection_line_controller.dart';
 import '../avance/avance_page.dart';
 import '../historial/historial_page.dart';
 import '../inspeccion/registro_inspeccion_page.dart';
@@ -20,98 +15,28 @@ class SeleccionLineaPage extends StatefulWidget {
 }
 
 class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
+  final SelectionLineController selectionLineController =
+      SelectionLineController();
   Map<String, dynamic> troncalesJson = {};
-List<String> ramalesJson = [];
-Future<void> cargarJson() async {
-  final prefs = await SharedPreferences.getInstance();
+  List<String> ramalesJson = [];
 
-  try {
-    print("========== CONSULTANDO FIREBASE ==========");
+  Future<void> cargarJson() async {
+    final catalogos = await selectionLineController.cargarCatalogos();
 
-    final troncalesResponse = await http.get(
-      Uri.parse(troncalesCatalogUrl),
-    );
-
-    final ramalesResponse = await http.get(
-      Uri.parse(ramalesCatalogUrl),
-    );
-
-    if (troncalesResponse.statusCode == 200 &&
-        ramalesResponse.statusCode == 200) {
-      await prefs.setString('json_troncales_cache', troncalesResponse.body);
-      await prefs.setString('json_ramales_cache', ramalesResponse.body);
-
-      if (!mounted) return;
-
-      setState(() {
-        troncalesJson = json.decode(troncalesResponse.body);
-        ramalesJson = List<String>.from(
-          json.decode(ramalesResponse.body)['ramales'],
-        );
-      });
-
-      print("✅ JSON FIREBASE CARGADO Y GUARDADO EN CACHE");
-      return;
-    }
-  } catch (e) {
-    print("⚠ No se pudo cargar desde Firebase");
-    print(e);
-  }
-
-  try {
-    print("========== CARGANDO CACHE LOCAL ==========");
-
-    final troncalesCache = prefs.getString('json_troncales_cache');
-    final ramalesCache = prefs.getString('json_ramales_cache');
-
-    if (troncalesCache != null && ramalesCache != null) {
-      if (!mounted) return;
-
-      setState(() {
-        troncalesJson = json.decode(troncalesCache);
-        ramalesJson = List<String>.from(
-          json.decode(ramalesCache)['ramales'],
-        );
-      });
-
-      print("✅ JSON CARGADO DESDE CACHE LOCAL");
-      return;
-    }
-  } catch (e) {
-    print("⚠ No se pudo cargar cache local");
-    print(e);
-  }
-
-  try {
-    print("========== CARGANDO JSON INTERNO ==========");
-
-    final String troncalesData =
-        await rootBundle.loadString('assets/data/troncales.json');
-
-    final String ramalesData =
-        await rootBundle.loadString('assets/data/ramales.json');
-
-    if (!mounted) return;
+    if (!mounted || catalogos == null) return;
 
     setState(() {
-      troncalesJson = json.decode(troncalesData);
-      ramalesJson = List<String>.from(
-        json.decode(ramalesData)['ramales'],
-      );
+      troncalesJson = catalogos.troncalesJson;
+      ramalesJson = catalogos.ramalesJson;
     });
-
-    print("✅ JSON INTERNO CARGADO");
-  } catch (e) {
-    print("❌ ERROR TOTAL CARGANDO JSON");
-    print(e);
   }
-}
 
-@override
-void initState() {
-  super.initState();
-  cargarJson();
-}
+  @override
+  void initState() {
+    super.initState();
+    cargarJson();
+  }
+
   String tipoLinea = 'Troncal';
   String? troncalSeleccionada = 'TRONCAL 1';
   String? subtroncalSeleccionada = 'TRONCAL 1';
@@ -134,43 +59,34 @@ void initState() {
   }
 
   List<String> todasLasLineas() {
-    final List<String> lineas = [];
-
-    troncalesJson.forEach((troncal, subs) {
-      for (final sub in subs) {
-        lineas.add('$troncal / $sub');
-      }
-    });
-
-    for (final ramal in ramalesJson) {
-      lineas.add(ramal);
-    }
-
-    return lineas;
+    return selectionLineController.todasLasLineas(troncalesJson, ramalesJson);
   }
 
   @override
   Widget build(BuildContext context) {
     final bool esTroncal = tipoLinea == 'Troncal';
-if (troncalesJson.isEmpty || ramalesJson.isEmpty) {
-  return Scaffold(
-    body: Center(
-      child: Text(
-        'Cargando datos...\n'
-        'Troncales: ${troncalesJson.length}\n'
-        'Ramales: ${ramalesJson.length}',
-        textAlign: TextAlign.center,
-      ),
-    ),
-  );
-}
+    if (troncalesJson.isEmpty || ramalesJson.isEmpty) {
+      return Scaffold(
+        body: Center(
+          child: Text(
+            'Cargando datos...\n'
+            'Troncales: ${troncalesJson.length}\n'
+            'Ramales: ${ramalesJson.length}',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FA),
       appBar: AppBar(
         centerTitle: true,
         backgroundColor: const Color(0xFF0D47A1),
         foregroundColor: Colors.white,
-        title: const Text("Selección de Línea", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Selección de Línea",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -200,7 +116,8 @@ if (troncalesJson.isEmpty || ramalesJson.isEmpty) {
                   tipoLinea = valor!;
                   if (tipoLinea == 'Troncal') {
                     troncalSeleccionada = troncalesJson.keys.first;
-                    subtroncalSeleccionada = troncalesJson[troncalSeleccionada]!.first;
+                    subtroncalSeleccionada =
+                        troncalesJson[troncalSeleccionada]!.first;
                     ramalSeleccionado = null;
                   } else {
                     troncalSeleccionada = null;
@@ -226,8 +143,8 @@ if (troncalesJson.isEmpty || ramalesJson.isEmpty) {
                   setState(() {
                     troncalSeleccionada = valor!;
                     subtroncalSeleccionada = List<String>.from(
-  troncalesJson[troncalSeleccionada] ?? [],
-).first;
+                      troncalesJson[troncalSeleccionada] ?? [],
+                    ).first;
                   });
                 },
               ),
@@ -239,14 +156,15 @@ if (troncalesJson.isEmpty || ramalesJson.isEmpty) {
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.account_tree),
                 ),
-                items: List<String>.from(
-  troncalesJson[troncalSeleccionada] ?? [],
-).map((item) {
-  return DropdownMenuItem<String>(
-    value: item,
-    child: Text(item),
-  );
-}).toList(),
+                items:
+                    List<String>.from(
+                      troncalesJson[troncalSeleccionada] ?? [],
+                    ).map((item) {
+                      return DropdownMenuItem<String>(
+                        value: item,
+                        child: Text(item),
+                      );
+                    }).toList(),
                 onChanged: (valor) {
                   setState(() {
                     subtroncalSeleccionada = valor!;
@@ -297,19 +215,25 @@ if (troncalesJson.isEmpty || ramalesJson.isEmpty) {
                   : null,
               icon: const Icon(Icons.play_arrow),
               label: const Text("INICIAR INSPECCIÓN"),
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55)),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 55),
+              ),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const HistorialPage()),
+                  MaterialPageRoute(
+                    builder: (context) => const HistorialPage(),
+                  ),
                 );
               },
               icon: const Icon(Icons.history),
               label: const Text("HISTORIAL"),
-              style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
@@ -323,7 +247,9 @@ if (troncalesJson.isEmpty || ramalesJson.isEmpty) {
               },
               icon: const Icon(Icons.analytics),
               label: const Text("AVANCE"),
-              style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
             ),
           ],
         ),

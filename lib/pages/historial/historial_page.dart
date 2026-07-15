@@ -1,8 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../controllers/history_controller.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/inspeccion.dart';
 
@@ -14,6 +12,7 @@ class HistorialPage extends StatefulWidget {
 }
 
 class _HistorialPageState extends State<HistorialPage> {
+  final HistoryController historyController = HistoryController();
   List<Inspeccion> inspecciones = [];
 
   @override
@@ -23,26 +22,9 @@ class _HistorialPageState extends State<HistorialPage> {
   }
 
   Future<void> cargarHistorial() async {
-    final prefs = await SharedPreferences.getInstance();
+    final datos = await historyController.cargarHistorial();
 
     if (!mounted) return;
-
-    final historialGuardado =
-        prefs.getStringList('historial_inspecciones') ?? [];
-
-    final datos = historialGuardado.map((registro) {
-      final data = jsonDecode(registro);
-
-      return Inspeccion(
-        linea: data['linea'],
-        tipoLinea: data['tipoLinea'],
-        responsable: data['responsable'],
-        fecha: DateTime.parse(data['fecha']),
-        estadoLinea: data['estadoLinea'],
-        puntoReferencia: data['puntoReferencia'],
-        observaciones: data['observaciones'],
-      );
-    }).toList();
 
     setState(() {
       inspecciones = datos;
@@ -105,4 +87,3 @@ class _HistorialPageState extends State<HistorialPage> {
     );
   }
 }
-

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,12 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../controllers/inspection_registration_controller.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../models/inspeccion.dart';
-import '../../services/datos_app.dart';
+import '../../repositories/inspection_repository.dart';
 
 class ResumenInspeccionPage extends StatefulWidget {
   final String usuario;
@@ -52,13 +51,18 @@ class ResumenInspeccionPage extends StatefulWidget {
 }
 
 class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
+  final InspectionRepository inspectionRepository =
+      const CurrentInspectionRepository();
+  final InspectionRegistrationController registroController =
+      const InspectionRegistrationController();
   late TextEditingController observacionGeneralController;
 
   @override
   void initState() {
     super.initState();
-    observacionGeneralController =
-        TextEditingController(text: widget.observaciones);
+    observacionGeneralController = TextEditingController(
+      text: widget.observaciones,
+    );
   }
 
   @override
@@ -91,7 +95,11 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
             _card("Responsable", widget.responsable, Icons.person),
             _card("Usuario de acceso", widget.usuario, Icons.verified_user),
             _card("Tipo de línea", widget.tipoLinea, Icons.route),
-            _card("Línea seleccionada", widget.seleccionLinea, Icons.account_tree),
+            _card(
+              "Línea seleccionada",
+              widget.seleccionLinea,
+              Icons.account_tree,
+            ),
             _card(
               "Punto de referencia",
               widget.puntoReferencia.isEmpty
@@ -99,7 +107,11 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
                   : widget.puntoReferencia,
               Icons.place,
             ),
-            _card("Estado operativo", widget.estadoLinea, Icons.health_and_safety),
+            _card(
+              "Estado operativo",
+              widget.estadoLinea,
+              Icons.health_and_safety,
+            ),
             _card(
               "Latitud",
               widget.latitud.isEmpty ? "No registrada" : widget.latitud,
@@ -128,7 +140,9 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
                             margin: const EdgeInsets.only(bottom: 14),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFF0D47A1)),
+                              border: Border.all(
+                                color: const Color(0xFF0D47A1),
+                              ),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Column(
@@ -144,7 +158,9 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text("Coordenadas: ${h.latitud}, ${h.longitud}"),
+                                Text(
+                                  "Coordenadas: ${h.latitud}, ${h.longitud}",
+                                ),
                                 const SizedBox(height: 6),
                                 const Text("Fotos: FOTO 1  FOTO 2"),
                                 const SizedBox(height: 6),
@@ -183,38 +199,11 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
                   observaciones: observacionGeneralController.text.trim(),
                 );
 
-                DatosApp.inspecciones.add(nuevaInspeccion);
+                inspectionRepository.agregarInspeccion(nuevaInspeccion);
 
-                final prefs = await SharedPreferences.getInstance();
-                final historialActual =
-                    prefs.getStringList('historial_inspecciones') ?? [];
+                await inspectionRepository.guardarEnHistorial(nuevaInspeccion);
 
-                final registroJson = jsonEncode({
-                  'linea': nuevaInspeccion.linea,
-                  'tipoLinea': nuevaInspeccion.tipoLinea,
-                  'responsable': nuevaInspeccion.responsable,
-                  'fecha': nuevaInspeccion.fecha.toIso8601String(),
-                  'estadoLinea': nuevaInspeccion.estadoLinea,
-                  'puntoReferencia': nuevaInspeccion.puntoReferencia,
-                  'observaciones': nuevaInspeccion.observaciones,
-                });
-
-                historialActual.add(registroJson);
-
-                await prefs.setStringList(
-                  'historial_inspecciones',
-                  historialActual,
-                );
-
-                final prefsBorrador = await SharedPreferences.getInstance();
-
-await prefsBorrador.remove('borrador_usuario');
-await prefsBorrador.remove('borrador_tipoLinea');
-await prefsBorrador.remove('borrador_seleccionLinea');
-await prefsBorrador.remove('borrador_responsable');
-await prefsBorrador.remove('borrador_puntoReferencia');
-await prefsBorrador.remove('borrador_estadoLinea');
-await prefsBorrador.remove('borrador_hallazgos');
+                await registroController.borrarBorrador();
 
                 if (!context.mounted) return;
 
@@ -238,248 +227,239 @@ await prefsBorrador.remove('borrador_hallazgos');
       ),
     );
   }
-Future<void> generarPdf() async {
-  final logoLinerb = pw.MemoryImage(
-  (await rootBundle.load('assets/logo_linerb.png')).buffer.asUint8List(),
-);
-final footerFranjas = pw.MemoryImage(
-  (await rootBundle.load('assets/footer_linerb.png')).buffer.asUint8List(),
-);
 
-final footerTuberia = pw.MemoryImage(
-  (await rootBundle.load('assets/footer_linerb-1.png')).buffer.asUint8List(),
-);
-  final pdf = pw.Document();
-  final Map<HallazgoInspeccion, List<pw.MemoryImage>> fotosPdf = {};
+  Future<void> generarPdf() async {
+    final logoLinerb = pw.MemoryImage(
+      (await rootBundle.load('assets/logo_linerb.png')).buffer.asUint8List(),
+    );
+    final footerFranjas = pw.MemoryImage(
+      (await rootBundle.load('assets/footer_linerb.png')).buffer.asUint8List(),
+    );
 
-for (final h in widget.hallazgos) {
-  final List<pw.MemoryImage> fotos = [];
+    final footerTuberia = pw.MemoryImage(
+      (await rootBundle.load(
+        'assets/footer_linerb-1.png',
+      )).buffer.asUint8List(),
+    );
+    final pdf = pw.Document();
+    final Map<HallazgoInspeccion, List<pw.MemoryImage>> fotosPdf = {};
 
-  if (h.foto1Path != null && File(h.foto1Path!).existsSync()) {
-    fotos.add(pw.MemoryImage(await File(h.foto1Path!).readAsBytes()));
-  }
+    for (final h in widget.hallazgos) {
+      final List<pw.MemoryImage> fotos = [];
 
-  if (h.foto2Path != null && File(h.foto2Path!).existsSync()) {
-    fotos.add(pw.MemoryImage(await File(h.foto2Path!).readAsBytes()));
-  }
+      if (h.foto1Path != null && File(h.foto1Path!).existsSync()) {
+        fotos.add(pw.MemoryImage(await File(h.foto1Path!).readAsBytes()));
+      }
 
-  fotosPdf[h] = fotos;
-}
+      if (h.foto2Path != null && File(h.foto2Path!).existsSync()) {
+        fotos.add(pw.MemoryImage(await File(h.foto2Path!).readAsBytes()));
+      }
 
-  pdf.addPage(
-    pw.MultiPage(
-  pageTheme: pw.PageTheme(
-  pageFormat: PdfPageFormat.a4,
-  margin: const pw.EdgeInsets.fromLTRB(35, 35, 35, 120),
-  buildBackground: (context) {
-    return pw.FullPage(
-      ignoreMargins: true,
-      child: pw.Stack(
-        children: [
-          pw.Positioned(
-            left: 0,
-            bottom: 0,
-            child: pw.Image(
-              footerFranjas,
-              width: 220,
+      fotosPdf[h] = fotos;
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageTheme: pw.PageTheme(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.fromLTRB(35, 35, 35, 120),
+          buildBackground: (context) {
+            return pw.FullPage(
+              ignoreMargins: true,
+              child: pw.Stack(
+                children: [
+                  pw.Positioned(
+                    left: 0,
+                    bottom: 0,
+                    child: pw.Image(footerFranjas, width: 220),
+                  ),
+                  pw.Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: pw.Image(footerTuberia, width: 320),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
+        build: (context) => [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Image(logoLinerb, width: 140),
+              pw.SizedBox(width: 25),
+              pw.Container(width: 1.5, height: 70, color: PdfColors.green700),
+              pw.SizedBox(width: 25),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'INFORME DE LINERB',
+                      style: pw.TextStyle(
+                        fontSize: 22,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.green900,
+                      ),
+                    ),
+                    pw.SizedBox(height: 6),
+                    pw.Text(
+                      'Inspección de Líneas y Ramales',
+                      style: const pw.TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'No. Informe: LIN-${DateTime.now().millisecondsSinceEpoch}',
+                  ),
+                  pw.Text('Fecha: ${fechaCorta(DateTime.now())}'),
+                  pw.Text('Versión: 1.0'),
+                  pw.Text('Página: 1'),
+                ],
+              ),
+            ],
+          ),
+
+          pw.SizedBox(height: 12),
+
+          pw.Container(height: 2, color: PdfColors.green900),
+
+          pw.SizedBox(height: 10),
+
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.green900),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  color: PdfColors.green900,
+                  child: pw.Text(
+                    '1. INFORMACIÓN GENERAL',
+                    style: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+                pw.SizedBox(height: 8),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text('Fecha: ${fechaCorta(DateTime.now())}'),
+                          pw.Text('Responsable: ${widget.responsable}'),
+                          pw.Text('Usuario: ${widget.usuario}'),
+                          pw.Text('Tipo de línea: ${widget.tipoLinea}'),
+                        ],
+                      ),
+                    ),
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text('Línea: ${widget.seleccionLinea}'),
+                          pw.Text(
+                            'Punto de referencia: ${widget.puntoReferencia}',
+                          ),
+                          pw.Text('Estado operativo: ${widget.estadoLinea}'),
+                          pw.Text(
+                            'Total hallazgos: ${widget.hallazgos.length}',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          pw.Positioned(
-            right: 0,
-            bottom: 0,
-            child: pw.Image(
-              footerTuberia,
-              width: 320,
+
+          pw.SizedBox(height: 15),
+
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            color: PdfColors.green900,
+            child: pw.Text(
+              '2. HALLAZGOS REGISTRADOS',
+              style: pw.TextStyle(
+                color: PdfColors.white,
+                fontWeight: pw.FontWeight.bold,
+              ),
             ),
           ),
+
+          pw.SizedBox(height: 10),
+
+          ...widget.hallazgos.map(
+            (h) => pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 10),
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.green900, width: 1),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    h.detalle.isEmpty ? h.tipo : '${h.tipo} - ${h.detalle}',
+                  ),
+                  pw.Text('Latitud: ${h.latitud}'),
+                  pw.Text('Longitud: ${h.longitud}'),
+                  pw.Text('Descripción: ${h.descripcion}'),
+
+                  if ((fotosPdf[h] ?? []).isNotEmpty) ...[
+                    pw.SizedBox(height: 8),
+                    pw.Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: (fotosPdf[h] ?? []).map((foto) {
+                        return pw.Container(
+                          width: 180,
+                          height: 130,
+                          child: pw.Image(foto, fit: pw.BoxFit.cover),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          pw.SizedBox(height: 15),
+
+          pw.SizedBox(height: 20),
+
+          pw.Text(
+            'OBSERVACIÓN GENERAL',
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          ),
+
+          pw.SizedBox(height: 8),
+
+          pw.Text(observacionGeneralController.text),
         ],
       ),
     );
-  },
-),
 
-build: (context) => [
-        pw.Row(
-  crossAxisAlignment: pw.CrossAxisAlignment.start,
-  children: [
-    pw.Image(logoLinerb, width: 140),
-    pw.SizedBox(width: 25),
-    pw.Container(width: 1.5, height: 70, color: PdfColors.green700),
-    pw.SizedBox(width: 25),
-    pw.Expanded(
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'INFORME DE LINERB',
-            style: pw.TextStyle(
-              fontSize: 22,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.green900,
-            ),
-          ),
-          pw.SizedBox(height: 6),
-          pw.Text(
-            'Inspección de Líneas y Ramales',
-            style: const pw.TextStyle(fontSize: 13),
-          ),
-        ],
-      ),
-    ),
-    pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text('No. Informe: LIN-${DateTime.now().millisecondsSinceEpoch}'),
-        pw.Text('Fecha: ${fechaCorta(DateTime.now())}'),
-        pw.Text('Versión: 1.0'),
-        pw.Text('Página: 1'),
-      ],
-    ),
-  ],
-),
+    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+  }
 
-pw.SizedBox(height: 12),
-
-pw.Container(
-  height: 2,
-  color: PdfColors.green900,
-),
-
-        pw.SizedBox(height: 10),
-
-        pw.Container(
-  padding: const pw.EdgeInsets.all(10),
-  decoration: pw.BoxDecoration(
-    border: pw.Border.all(color: PdfColors.green900),
-  ),
-  child: pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.start,
-    children: [
-      pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        color: PdfColors.green900,
-        child: pw.Text(
-          '1. INFORMACIÓN GENERAL',
-          style: pw.TextStyle(
-            color: PdfColors.white,
-            fontWeight: pw.FontWeight.bold,
-          ),
-        ),
-      ),
-      pw.SizedBox(height: 8),
-      pw.Row(
-        children: [
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('Fecha: ${fechaCorta(DateTime.now())}'),
-                pw.Text('Responsable: ${widget.responsable}'),
-                pw.Text('Usuario: ${widget.usuario}'),
-                pw.Text('Tipo de línea: ${widget.tipoLinea}'),
-              ],
-            ),
-          ),
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('Línea: ${widget.seleccionLinea}'),
-                pw.Text('Punto de referencia: ${widget.puntoReferencia}'),
-                pw.Text('Estado operativo: ${widget.estadoLinea}'),
-                pw.Text('Total hallazgos: ${widget.hallazgos.length}'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ],
-  ),
-),
-
-        pw.SizedBox(height: 15),
-
-        pw.Container(
-  padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-  color: PdfColors.green900,
-  child: pw.Text(
-    '2. HALLAZGOS REGISTRADOS',
-    style: pw.TextStyle(
-      color: PdfColors.white,
-      fontWeight: pw.FontWeight.bold,
-    ),
-  ),
-),
-
-        pw.SizedBox(height: 10),
-
-        ...widget.hallazgos.map(
-          (h) => pw.Container(
-            margin: const pw.EdgeInsets.only(bottom: 10),
-            padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(
-  border: pw.Border.all(
-    color: PdfColors.green900,
-    width: 1,
-  ),
-),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  h.detalle.isEmpty
-                      ? h.tipo
-                      : '${h.tipo} - ${h.detalle}',
-                ),
-                pw.Text('Latitud: ${h.latitud}'),
-pw.Text('Longitud: ${h.longitud}'),
-pw.Text('Descripción: ${h.descripcion}'),
-
-if ((fotosPdf[h] ?? []).isNotEmpty) ...[
-  pw.SizedBox(height: 8),
-  pw.Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: (fotosPdf[h] ?? []).map((foto) {
-      return pw.Container(
-        width: 180,
-        height: 130,
-        child: pw.Image(foto, fit: pw.BoxFit.cover),
-      );
-    }).toList(),
-  ),
-],
-              ],
-            ),
-          ),
-        ),
-
-        pw.SizedBox(height: 15),
-
-        pw.SizedBox(height: 20),
-
-pw.Text(
-  'OBSERVACIÓN GENERAL',
-  style: pw.TextStyle(
-    fontSize: 16,
-    fontWeight: pw.FontWeight.bold,
-  ),
-),
-
-pw.SizedBox(height: 8),
-
-pw.Text(
-  observacionGeneralController.text,
-),
-
-      ],
-    ),
-  );
-
-  await Printing.layoutPdf(
-    onLayout: (format) async => pdf.save(),
-  );
-}
   Widget _card(String titulo, String contenido, IconData icono) {
     return Card(
       child: ListTile(
@@ -490,4 +470,3 @@ pw.Text(
     );
   }
 }
-

@@ -1,13 +1,13 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../controllers/inspection_registration_controller.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
+import '../../repositories/draft_repository.dart';
 import '../resumen/resumen_inspeccion_page.dart';
 
 class RegistroInspeccionPage extends StatefulWidget {
@@ -25,7 +25,10 @@ class RegistroInspeccionPage extends StatefulWidget {
   @override
   State<RegistroInspeccionPage> createState() => _RegistroInspeccionPageState();
 }
+
 class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
+  final InspectionRegistrationController registroController =
+      const InspectionRegistrationController();
   String estadoLinea = 'Operativa';
 
   String hallazgoSeleccionado = 'Corrosión';
@@ -36,168 +39,136 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
   String fugaEstado = 'Activa';
   final List<HallazgoInspeccion> hallazgosRegistrados = [];
   File? foto1;
-File? foto2;
+  File? foto2;
 
-final ImagePicker picker = ImagePicker();
+  final ImagePicker picker = ImagePicker();
 
   final TextEditingController responsableController = TextEditingController();
-  final TextEditingController puntoReferenciaController = TextEditingController();
+  final TextEditingController puntoReferenciaController =
+      TextEditingController();
   final TextEditingController latitudController = TextEditingController();
   final TextEditingController longitudController = TextEditingController();
   final TextEditingController observacionesController = TextEditingController();
   Future<void> guardarBorradorLocal() async {
-  final prefs = await SharedPreferences.getInstance();
-
-  final hallazgosJson = hallazgosRegistrados.map((h) {
-    return jsonEncode({
-      'tipo': h.tipo,
-      'detalle': h.detalle,
-      'latitud': h.latitud,
-      'longitud': h.longitud,
-      'descripcion': h.descripcion,
-      'foto1Path': h.foto1Path,
-      'foto2Path': h.foto2Path,
-    });
-  }).toList();
-
-  await prefs.setString('borrador_usuario', widget.usuario);
-  await prefs.setString('borrador_tipoLinea', widget.tipoLinea);
-  await prefs.setString('borrador_seleccionLinea', widget.seleccionLinea);
-  await prefs.setString('borrador_responsable', responsableController.text);
-  await prefs.setString('borrador_puntoReferencia', puntoReferenciaController.text);
-  await prefs.setString('borrador_estadoLinea', estadoLinea);
-  await prefs.setStringList('borrador_hallazgos', hallazgosJson);
-}
-
-Future<void> cargarBorradorLocal() async {
-  final prefs = await SharedPreferences.getInstance();
-
-  if (!mounted) return;
-
-  final seleccionGuardada = prefs.getString('borrador_seleccionLinea');
-
-  if (seleccionGuardada == null || seleccionGuardada != widget.seleccionLinea) {
-    return;
-  }
-
-  responsableController.text = prefs.getString('borrador_responsable') ?? '';
-  puntoReferenciaController.text = prefs.getString('borrador_puntoReferencia') ?? '';
-  estadoLinea = prefs.getString('borrador_estadoLinea') ?? 'Operativa';
-
-  final hallazgosJson = prefs.getStringList('borrador_hallazgos') ?? [];
-
-  hallazgosRegistrados.clear();
-
-  for (final item in hallazgosJson) {
-    final data = jsonDecode(item);
-
-    hallazgosRegistrados.add(
-      HallazgoInspeccion(
-        tipo: data['tipo'] ?? '',
-        detalle: data['detalle'] ?? '',
-        latitud: data['latitud'] ?? '',
-        longitud: data['longitud'] ?? '',
-        descripcion: data['descripcion'] ?? '',
-        foto1Path: data['foto1Path'],
-        foto2Path: data['foto2Path'],
+    await registroController.guardarBorrador(
+      DraftData(
+        usuario: widget.usuario,
+        tipoLinea: widget.tipoLinea,
+        seleccionLinea: widget.seleccionLinea,
+        responsable: responsableController.text,
+        puntoReferencia: puntoReferenciaController.text,
+        estadoLinea: estadoLinea,
+        hallazgos: hallazgosRegistrados,
       ),
     );
   }
 
-  setState(() {});
-}
-
-Future<void> borrarBorradorLocal() async {
-  final prefs = await SharedPreferences.getInstance();
-
-  await prefs.remove('borrador_usuario');
-  await prefs.remove('borrador_tipoLinea');
-  await prefs.remove('borrador_seleccionLinea');
-  await prefs.remove('borrador_responsable');
-  await prefs.remove('borrador_puntoReferencia');
-  await prefs.remove('borrador_estadoLinea');
-  await prefs.remove('borrador_hallazgos');
-}
-@override
-void initState() {
-  super.initState();
-  cargarBorradorLocal();
-}
-  Future<void> tomarFoto1() async {
-  final XFile? imagen = await picker.pickImage(
-    source: ImageSource.camera,
-    imageQuality: 80,
-  );
-
-  if (!mounted) return;
-
-  if (imagen != null) {
-    setState(() {
-      foto1 = File(imagen.path);
-    });
-  }
-}
-
-Future<void> tomarFoto2() async {
-  final XFile? imagen = await picker.pickImage(
-    source: ImageSource.camera,
-    imageQuality: 80,
-  );
-
-  if (!mounted) return;
-
-  if (imagen != null) {
-    setState(() {
-      foto2 = File(imagen.path);
-    });
-  }
-}
-
-Future<void> obtenerCoordenadas() async {
-  bool servicioActivo;
-  LocationPermission permiso;
-
-  servicioActivo = await Geolocator.isLocationServiceEnabled();
-  if (!mounted) return;
-
-  if (!servicioActivo) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Active el GPS del dispositivo")),
+  Future<void> cargarBorradorLocal() async {
+    final borrador = await registroController.cargarBorrador(
+      widget.seleccionLinea,
     );
-    return;
-  }
 
-  permiso = await Geolocator.checkPermission();
-  if (!mounted) return;
-
-  if (permiso == LocationPermission.denied) {
-    permiso = await Geolocator.requestPermission();
     if (!mounted) return;
+
+    if (borrador == null) {
+      return;
+    }
+
+    responsableController.text = borrador.responsable;
+    puntoReferenciaController.text = borrador.puntoReferencia;
+    estadoLinea = borrador.estadoLinea;
+
+    hallazgosRegistrados.clear();
+    hallazgosRegistrados.addAll(borrador.hallazgos);
+
+    setState(() {});
   }
 
-  if (permiso == LocationPermission.deniedForever ||
-      permiso == LocationPermission.denied) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Permiso de ubicación denegado")),
+  Future<void> borrarBorradorLocal() async {
+    await registroController.borrarBorrador();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    cargarBorradorLocal();
+  }
+
+  Future<void> tomarFoto1() async {
+    final XFile? imagen = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
     );
-    return;
+
+    if (!mounted) return;
+
+    if (imagen != null) {
+      setState(() {
+        foto1 = File(imagen.path);
+      });
+    }
   }
 
-  final posicion = await Geolocator.getCurrentPosition(
-    desiredAccuracy: LocationAccuracy.high,
-  );
+  Future<void> tomarFoto2() async {
+    final XFile? imagen = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+    );
 
-  if (!mounted) return;
+    if (!mounted) return;
 
-  setState(() {
-    latitudController.text = posicion.latitude.toString();
-    longitudController.text = posicion.longitude.toString();
-  });
+    if (imagen != null) {
+      setState(() {
+        foto2 = File(imagen.path);
+      });
+    }
+  }
 
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: Text("Coordenadas obtenidas correctamente")),
-  );
-}
+  Future<void> obtenerCoordenadas() async {
+    bool servicioActivo;
+    LocationPermission permiso;
+
+    servicioActivo = await Geolocator.isLocationServiceEnabled();
+    if (!mounted) return;
+
+    if (!servicioActivo) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Active el GPS del dispositivo")),
+      );
+      return;
+    }
+
+    permiso = await Geolocator.checkPermission();
+    if (!mounted) return;
+
+    if (permiso == LocationPermission.denied) {
+      permiso = await Geolocator.requestPermission();
+      if (!mounted) return;
+    }
+
+    if (permiso == LocationPermission.deniedForever ||
+        permiso == LocationPermission.denied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Permiso de ubicación denegado")),
+      );
+      return;
+    }
+
+    final posicion = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      latitudController.text = posicion.latitude.toString();
+      longitudController.text = posicion.longitude.toString();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Coordenadas obtenidas correctamente")),
+    );
+  }
 
   final List<String> hallazgos = [
     'Corrosión',
@@ -281,7 +252,10 @@ Future<void> obtenerCoordenadas() async {
                   value: "Operativa con Hallazgos",
                   child: Text("Operativa con Hallazgos"),
                 ),
-                DropdownMenuItem(value: "Intervenida", child: Text("Intervenida")),
+                DropdownMenuItem(
+                  value: "Intervenida",
+                  child: Text("Intervenida"),
+                ),
                 DropdownMenuItem(
                   value: "Fuera de Servicio",
                   child: Text("Fuera de Servicio"),
@@ -322,10 +296,7 @@ Future<void> obtenerCoordenadas() async {
                 label: "Condición de vegetación",
                 icon: Icons.grass,
                 value: vegetacionEstado,
-                opciones: const [
-                  "Requiere rocería",
-                  "Árbol afectando línea",
-                ],
+                opciones: const ["Requiere rocería", "Árbol afectando línea"],
                 onChanged: (valor) {
                   setState(() {
                     vegetacionEstado = valor!;
@@ -340,11 +311,7 @@ Future<void> obtenerCoordenadas() async {
                 label: "Estado de la fuga",
                 icon: Icons.water_drop,
                 value: fugaEstado,
-                opciones: const [
-                  "Activa",
-                  "Controlada",
-                  "Histórica",
-                ],
+                opciones: const ["Activa", "Controlada", "Histórica"],
                 onChanged: (valor) {
                   setState(() {
                     fugaEstado = valor!;
@@ -359,10 +326,7 @@ Future<void> obtenerCoordenadas() async {
                 label: "Estado de soportería",
                 icon: Icons.construction,
                 value: soporteEstado,
-                opciones: const [
-                  "Buen estado",
-                  "Mal estado",
-                ],
+                opciones: const ["Buen estado", "Mal estado"],
                 onChanged: (valor) {
                   setState(() {
                     soporteEstado = valor!;
@@ -391,28 +355,25 @@ Future<void> obtenerCoordenadas() async {
               ),
             ],
 
-           const SizedBox(height: 22),
+            const SizedBox(height: 22),
 
-const Text(
-  "Ubicación GPS",
-  style: TextStyle(
-    fontSize: 18,
-    fontWeight: FontWeight.bold,
-  ),
-),
+            const Text(
+              "Ubicación GPS",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
 
-const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-ElevatedButton.icon(
-  onPressed: obtenerCoordenadas,
-  icon: const Icon(Icons.gps_fixed),
-  label: const Text("OBTENER COORDENADAS"),
-  style: ElevatedButton.styleFrom(
-    minimumSize: const Size(double.infinity, 52),
-  ),
-),
+            ElevatedButton.icon(
+              onPressed: obtenerCoordenadas,
+              icon: const Icon(Icons.gps_fixed),
+              label: const Text("OBTENER COORDENADAS"),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
+            ),
 
-const SizedBox(height: 12),
+            const SizedBox(height: 12),
             TextField(
               controller: latitudController,
               readOnly: true,
@@ -436,32 +397,24 @@ const SizedBox(height: 12),
             ),
             const SizedBox(height: 22),
             ElevatedButton.icon(
-  onPressed: tomarFoto1,
-  icon: const Icon(Icons.camera_alt),
-  label: Text(
-    foto1 == null
-        ? "TOMAR FOTO 1"
-        : "FOTO 1 CAPTURADA",
-  ),
-  style: ElevatedButton.styleFrom(
-    minimumSize: const Size(double.infinity, 52),
-  ),
-),
+              onPressed: tomarFoto1,
+              icon: const Icon(Icons.camera_alt),
+              label: Text(foto1 == null ? "TOMAR FOTO 1" : "FOTO 1 CAPTURADA"),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
+            ),
 
-const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-ElevatedButton.icon(
-  onPressed: tomarFoto2,
-  icon: const Icon(Icons.camera_alt),
-  label: Text(
-    foto2 == null
-        ? "TOMAR FOTO 2"
-        : "FOTO 2 CAPTURADA",
-  ),
-  style: ElevatedButton.styleFrom(
-    minimumSize: const Size(double.infinity, 52),
-  ),
-),
+            ElevatedButton.icon(
+              onPressed: tomarFoto2,
+              icon: const Icon(Icons.camera_alt),
+              label: Text(foto2 == null ? "TOMAR FOTO 2" : "FOTO 2 CAPTURADA"),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
+            ),
             const SizedBox(height: 22),
             TextField(
               controller: observacionesController,
@@ -474,83 +427,79 @@ ElevatedButton.icon(
               ),
             ),
             const SizedBox(height: 22),
-           OutlinedButton.icon(
-  onPressed: () {
-    if (latitudController.text.trim().isEmpty ||
-        longitudController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Debe ingresar coordenadas del hallazgo"),
-        ),
-      );
-      return;
-    }
+            OutlinedButton.icon(
+              onPressed: () {
+                if (latitudController.text.trim().isEmpty ||
+                    longitudController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Debe ingresar coordenadas del hallazgo"),
+                    ),
+                  );
+                  return;
+                }
 
-    if (observacionesController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Debe ingresar descripción del hallazgo"),
-        ),
-      );
-      return;
-    }
+                if (observacionesController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Debe ingresar descripción del hallazgo"),
+                    ),
+                  );
+                  return;
+                }
 
-    String detalle = "";
+                final detalle = registroController.detalleHallazgo(
+                  hallazgoSeleccionado: hallazgoSeleccionado,
+                  vegetacionEstado: vegetacionEstado,
+                  fugaEstado: fugaEstado,
+                  soporteEstado: soporteEstado,
+                  valvulaEstado: valvulaEstado,
+                );
 
-    if (hallazgoSeleccionado == "Vegetación") {
-      detalle = vegetacionEstado;
-    } else if (hallazgoSeleccionado == "Fuga") {
-      detalle = fugaEstado;
-    } else if (hallazgoSeleccionado == "Soportería") {
-      detalle = soporteEstado;
-    } else if (hallazgoSeleccionado == "Válvulas") {
-      detalle = valvulaEstado;
-    }
+                final nuevoHallazgo = HallazgoInspeccion(
+                  tipo: hallazgoSeleccionado,
+                  detalle: detalle,
+                  latitud: latitudController.text.trim(),
+                  longitud: longitudController.text.trim(),
+                  descripcion: observacionesController.text.trim(),
+                  foto1Path: foto1?.path,
+                  foto2Path: foto2?.path,
+                );
 
-    final nuevoHallazgo = HallazgoInspeccion(
-      tipo: hallazgoSeleccionado,
-      detalle: detalle,
-      latitud: latitudController.text.trim(),
-      longitud: longitudController.text.trim(),
-      descripcion: observacionesController.text.trim(),
-      foto1Path: foto1?.path,
-      foto2Path: foto2?.path,
-    );
+                setState(() {
+                  hallazgosRegistrados.add(nuevoHallazgo);
 
-    setState(() {
-      hallazgosRegistrados.add(nuevoHallazgo);
+                  latitudController.clear();
+                  longitudController.clear();
+                  observacionesController.clear();
+                  foto1 = null;
+                  foto2 = null;
+                });
 
-      latitudController.clear();
-      longitudController.clear();
-      observacionesController.clear();
-      foto1 = null;
-foto2 = null;
-    });
+                guardarBorradorLocal();
 
-    guardarBorradorLocal();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          "Hallazgo agregado: ${nuevoHallazgo.tipo}",
-        ),
-      ),
-    );
-  },
-  icon: const Icon(Icons.drafts),
-  label: const Text("AGREGAR HALLAZGO A BORRADOR"),
-  style: OutlinedButton.styleFrom(
-    minimumSize: const Size(double.infinity, 52),
-  ),
-),
-              const SizedBox(height: 12),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("Hallazgo agregado: ${nuevoHallazgo.tipo}"),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.drafts),
+              label: const Text("AGREGAR HALLAZGO A BORRADOR"),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+              ),
+            ),
+            const SizedBox(height: 12),
 
             ElevatedButton.icon(
               onPressed: () {
                 if (responsableController.text.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text("Debe ingresar el responsable de la inspección"),
+                      content: Text(
+                        "Debe ingresar el responsable de la inspección",
+                      ),
                     ),
                   );
                   return;
@@ -591,6 +540,7 @@ foto2 = null;
       ),
     );
   }
+
   Widget _dropdownDetalle({
     required String label,
     required IconData icon,

@@ -1,35 +1,31 @@
 import 'package:flutter/material.dart';
 
+import '../../controllers/progress_controller.dart';
 import '../../core/utils/date_utils.dart';
-import '../../services/datos_app.dart';
 
 class AvancePage extends StatelessWidget {
   final List<String> lineas;
+  final ProgressController progressController;
 
-  const AvancePage({super.key, required this.lineas});
+  const AvancePage({
+    super.key,
+    required this.lineas,
+    this.progressController = const ProgressController(),
+  });
 
   DateTime? ultimaInspeccion(String linea) {
-    final registros = DatosApp.inspecciones.where((i) => i.linea == linea).toList();
-
-    if (registros.isEmpty) return null;
-
-    registros.sort((a, b) => b.fecha.compareTo(a.fecha));
-    return registros.first.fecha;
+    return progressController.ultimaInspeccion(linea);
   }
 
   String estadoSemaforo(DateTime? fecha) {
-    if (fecha == null) return "🔴 Nunca inspeccionada";
-
-    final dias = DateTime.now().difference(fecha).inDays;
-
-    if (dias <= 15) return "🟢 $dias días";
-    if (dias <= 60) return "🟡 $dias días";
-    return "🔴 $dias días";
+    return progressController.estadoSemaforo(fecha);
   }
 
   @override
   Widget build(BuildContext context) {
-    final inspeccionadas = lineas.where((l) => ultimaInspeccion(l) != null).length;
+    final inspeccionadas = lineas
+        .where((l) => ultimaInspeccion(l) != null)
+        .length;
     final total = lineas.length;
     final avance = total == 0 ? 0.0 : inspeccionadas / total;
 
@@ -52,7 +48,10 @@ class AvancePage extends StatelessWidget {
         centerTitle: true,
         backgroundColor: const Color(0xFF0D47A1),
         foregroundColor: Colors.white,
-        title: const Text("Avance de Inspección", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Avance de Inspección",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(18),
@@ -64,7 +63,13 @@ class AvancePage extends StatelessWidget {
                 padding: const EdgeInsets.all(18),
                 child: Column(
                   children: [
-                    const Text("AVANCE GENERAL", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text(
+                      "AVANCE GENERAL",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     Text("Líneas registradas: $total"),
                     Text("Inspeccionadas: $inspeccionadas"),

@@ -17,4 +17,3 @@ class Inspeccion {
     required this.observaciones,
   });
 }
-
