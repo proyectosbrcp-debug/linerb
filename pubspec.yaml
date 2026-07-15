@@ -17,6 +17,8 @@ dependencies:
   http: ^1.2.1
   sqflite: ^2.4.3
   path: ^1.9.1
+  firebase_core: ^4.3.0
+  cloud_firestore: ^6.1.0
 
 dev_dependencies:
   flutter_test:

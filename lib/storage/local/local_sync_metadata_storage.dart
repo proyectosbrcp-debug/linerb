@@ -56,6 +56,44 @@ class LocalSyncMetadataStorage implements SyncMetadataStorage {
     );
   }
 
+  @override
+  Future<void> markSynced(
+    SyncEntityType entityType,
+    String entityId, {
+    required int remoteVersion,
+    required DateTime lastSyncAt,
+  }) async {
+    final db = await database.open();
+    await db.update(
+      _tableFor(entityType),
+      {
+        'sync_status': syncStatusToStorage(SyncStatus.synced),
+        'remote_version': remoteVersion,
+        'last_sync_at': lastSyncAt.toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [entityId],
+    );
+  }
+
+  @override
+  Future<void> markConflict(
+    SyncEntityType entityType,
+    String entityId, {
+    required String remotePayload,
+  }) async {
+    final db = await database.open();
+    await db.update(
+      _tableFor(entityType),
+      {
+        'sync_status': syncStatusToStorage(SyncStatus.conflict),
+        'diagnostic_notes': remotePayload,
+      },
+      where: 'id = ?',
+      whereArgs: [entityId],
+    );
+  }
+
   String _tableFor(SyncEntityType entityType) {
     return switch (entityType) {
       SyncEntityType.inspection => 'inspections',

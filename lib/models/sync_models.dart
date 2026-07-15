@@ -11,6 +11,41 @@ enum SyncStatus {
   failed,
 }
 
+enum SyncWorkerStatus {
+  offline,
+  syncing,
+  synced,
+  partialFailure,
+  conflict,
+  unavailable,
+}
+
+class RemoteChangeSet {
+  final List<Map<String, Object?>> inspections;
+  final List<Map<String, Object?>> findings;
+  final DateTime? cursor;
+
+  const RemoteChangeSet({
+    required this.inspections,
+    required this.findings,
+    required this.cursor,
+  });
+}
+
+class SyncWorkerResult {
+  final SyncWorkerStatus status;
+  final int processed;
+  final int failed;
+  final int conflicts;
+
+  const SyncWorkerResult({
+    required this.status,
+    required this.processed,
+    required this.failed,
+    required this.conflicts,
+  });
+}
+
 class SyncMetadata {
   final String globalId;
   final DateTime createdAt;

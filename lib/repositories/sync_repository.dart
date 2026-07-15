@@ -3,6 +3,26 @@ import '../storage/sync_queue_storage.dart';
 
 abstract class RemoteSyncDataSource {
   Future<void> push(SyncQueueEntry operation);
+
+  Future<void> pushBatch(List<SyncQueueEntry> operations);
+
+  Future<void> createInspection(Map<String, Object?> payload);
+
+  Future<void> updateInspection(Map<String, Object?> payload);
+
+  Future<void> deleteInspection(Map<String, Object?> payload);
+
+  Future<void> createFinding(Map<String, Object?> payload);
+
+  Future<void> updateFinding(Map<String, Object?> payload);
+
+  Future<void> deleteFinding(Map<String, Object?> payload);
+
+  Future<RemoteChangeSet> fetchChanges({DateTime? since});
+
+  Future<List<Map<String, Object?>>> fetchFindingsForInspections(
+    List<String> inspectionGlobalIds,
+  );
 }
 
 abstract class SyncRepository {

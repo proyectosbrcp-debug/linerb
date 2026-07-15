@@ -1,3 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+
 import '../../controllers/dashboard_controller.dart';
 import '../../controllers/history_controller.dart';
 import '../../controllers/inspection_registration_controller.dart';
@@ -9,8 +12,11 @@ import '../../repositories/catalog_repository.dart';
 import '../../repositories/dashboard_repository.dart';
 import '../../repositories/draft_repository.dart';
 import '../../repositories/inspection_repository.dart';
+import '../../repositories/remote/firestore_remote_sync_data_source.dart';
 import '../../repositories/sync_repository.dart';
 import '../../services/device_identity_service.dart';
+import '../../services/remote_sync_applier.dart';
+import '../../services/sync_worker.dart';
 import '../../storage/catalog_cache_storage.dart';
 import '../../storage/draft_storage.dart';
 import '../../storage/fallback_draft_storage.dart';
@@ -21,6 +27,7 @@ import '../../storage/inspection_storage.dart';
 import '../../storage/local/linerb_database.dart';
 import '../../storage/local/local_database_storage.dart';
 import '../../storage/local/local_sync_queue_storage.dart';
+import '../../storage/local/local_sync_metadata_storage.dart';
 import '../../storage/migration/v1_data_migration_service.dart';
 import '../../storage/shared_preferences_storage.dart';
 
@@ -42,6 +49,24 @@ class AppDependencies {
   static final SyncRepository syncRepository = LocalSyncRepository(
     queueStorage: syncQueueStorage,
   );
+  static final LocalSyncMetadataStorage syncMetadataStorage =
+      LocalSyncMetadataStorage(database: linerbDatabase);
+  static final RemoteSyncApplier remoteSyncApplier = RemoteSyncApplier(
+    database: linerbDatabase,
+  );
+  static FirestoreRemoteSyncDataSource? get remoteSyncDataSource {
+    if (Firebase.apps.isEmpty) return null;
+    return FirestoreRemoteSyncDataSource(firestore: FirebaseFirestore.instance);
+  }
+
+  static SyncWorker syncWorker() {
+    return SyncWorker(
+      queueStorage: syncQueueStorage,
+      metadataStorage: syncMetadataStorage,
+      remoteDataSource: remoteSyncDataSource,
+      clock: clock,
+    );
+  }
 
   static const SharedPreferencesStorage sharedPreferencesStorage =
       SharedPreferencesStorage();
