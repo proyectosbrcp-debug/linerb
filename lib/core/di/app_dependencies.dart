@@ -1,15 +1,19 @@
+import '../../controllers/dashboard_controller.dart';
 import '../../controllers/history_controller.dart';
 import '../../controllers/inspection_registration_controller.dart';
 import '../../controllers/progress_controller.dart';
 import '../../controllers/selection_line_controller.dart';
 import '../../core/runtime/app_runtime_initializer.dart';
 import '../../repositories/catalog_repository.dart';
+import '../../repositories/dashboard_repository.dart';
 import '../../repositories/draft_repository.dart';
 import '../../repositories/inspection_repository.dart';
 import '../../storage/catalog_cache_storage.dart';
 import '../../storage/draft_storage.dart';
 import '../../storage/fallback_draft_storage.dart';
 import '../../storage/fallback_inspection_storage.dart';
+import '../../storage/diagnostics/local_diagnostic_service.dart';
+import '../../storage/integrity/local_data_integrity_service.dart';
 import '../../storage/inspection_storage.dart';
 import '../../storage/local/linerb_database.dart';
 import '../../storage/local/local_database_storage.dart';
@@ -46,8 +50,15 @@ class AppDependencies {
   static const CatalogRepository catalogRepository = CurrentCatalogRepository(
     storage: catalogCacheStorage,
   );
+  static final DashboardRepository dashboardRepository =
+      SqliteDashboardRepository(
+        database: linerbDatabase,
+        catalogRepository: catalogRepository,
+      );
   static final V1DataMigrationService v1DataMigrationService =
       V1DataMigrationService(target: localDatabaseStorage);
+  static final LocalDataIntegrityService localDataIntegrityService =
+      LocalDataIntegrityService(database: linerbDatabase);
   static final AppRuntimeInitializer runtimeInitializer = AppRuntimeInitializer(
     openDatabase: () async {
       await linerbDatabase.open();
@@ -57,6 +68,11 @@ class AppDependencies {
       await localDatabaseStorage.hydrateMemoryFromDatabase();
     },
   );
+  static final LocalDiagnosticService localDiagnosticService =
+      LocalDiagnosticService(
+        database: linerbDatabase,
+        runtimeInitializer: runtimeInitializer,
+      );
 
   static RuntimeInitializationStatus get runtimeStatus {
     return runtimeInitializer.status;
@@ -81,4 +97,11 @@ class AppDependencies {
   static final ProgressController progressController = ProgressController(
     inspectionRepository: inspectionRepository,
   );
+
+  static DashboardController dashboardController() {
+    return DashboardController(
+      repository: dashboardRepository,
+      clock: DateTime.now,
+    );
+  }
 }

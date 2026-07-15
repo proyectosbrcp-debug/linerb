@@ -20,11 +20,13 @@ class LocalDatabaseStorage
   final LinerbDatabase database;
   final List<Inspeccion>? inspeccionesMemoria;
   final bool failWrites;
+  final int? failOnHallazgoIndex;
 
   const LocalDatabaseStorage({
     required this.database,
     this.inspeccionesMemoria,
     this.failWrites = false,
+    this.failOnHallazgoIndex,
   });
 
   List<Inspeccion> get _inspeccionesMemoria =>
@@ -114,6 +116,11 @@ class LocalDatabaseStorage
 
         if (inserted != 0) {
           for (var index = 0; index < hallazgos.length; index++) {
+            if (failOnHallazgoIndex == index) {
+              throw const StorageWriteException(
+                'Fallo simulado guardando hallazgo local',
+              );
+            }
             await txn.insert(
               'hallazgos',
               _hallazgoToRow(hallazgos[index], index, inspectionId: id),

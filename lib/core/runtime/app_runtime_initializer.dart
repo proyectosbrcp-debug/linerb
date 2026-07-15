@@ -17,6 +17,10 @@ class AppRuntimeInitializer {
   RuntimeInitializationStatus status = RuntimeInitializationStatus.initializing;
   RuntimeInitializationResult? _result;
 
+  RuntimeInitializationResult? get result => _result;
+
+  Object? get lastError => _result?.error;
+
   AppRuntimeInitializer({
     required this.openDatabase,
     required this.migrate,
