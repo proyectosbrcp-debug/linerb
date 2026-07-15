@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "827707173369",
+    "project_id": "linerb",
+    "storage_bucket": "linerb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:827707173369:android:bc792438df6ea3b3b03528",
+        "android_client_info": {
+          "package_name": "com.example.linerb"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdAIuxWw6OiIDcGs8sGYXB67hrobzOO5M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
