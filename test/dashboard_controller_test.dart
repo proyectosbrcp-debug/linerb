@@ -207,7 +207,7 @@ void main() {
     final summary = await controller.loadSummary();
 
     expect(summary.totalInspections, 1);
-    expect(summary.totalFindings, 1);
+    expect(summary.totalFindings, 0);
     expect(summary.invalidRecordsExcluded, 2);
   });
 
@@ -237,6 +237,126 @@ void main() {
       1,
     );
   });
+
+  test('filtra por tipo de línea', () async {
+    await _saveInspection(storage, line: 'RAMAL 1', tipoLinea: 'Ramal');
+    await _saveInspection(
+      storage,
+      line: 'TRONCAL 1 / SUB 1',
+      tipoLinea: 'Troncal',
+    );
+
+    final summary = await controller.loadSummary(
+      filter: const DashboardFilter(lineType: DashboardLineTypeFilter.ramal),
+    );
+
+    expect(summary.totalCatalogLines, 2);
+    expect(
+      summary.lineStatuses.every((item) => item.kind == LineKind.ramal),
+      isTrue,
+    );
+  });
+
+  test('combina filtros de tipo, responsable y semáforo', () async {
+    await _saveInspection(
+      storage,
+      line: 'RAMAL 1',
+      tipoLinea: 'Ramal',
+      responsible: 'Ana',
+      date: DateTime(2026, 2, 20),
+    );
+    await _saveInspection(
+      storage,
+      line: 'RAMAL 2',
+      tipoLinea: 'Ramal',
+      responsible: 'Luis',
+      date: DateTime(2025, 12, 1),
+    );
+
+    final summary = await controller.loadSummary(
+      filter: const DashboardFilter(
+        lineType: DashboardLineTypeFilter.ramal,
+        semaforo: DashboardSemaforoFilter.verde,
+        responsible: 'Ana',
+      ),
+    );
+
+    expect(summary.totalInspections, 1);
+    expect(summary.lineStatuses.single.normalizedKey, 'RAMAL 1');
+  });
+
+  test('limpia filtros con DashboardFilter.clear', () {
+    const filter = DashboardFilter(
+      lineType: DashboardLineTypeFilter.ramal,
+      semaforo: DashboardSemaforoFilter.rojo,
+      responsible: 'Ana',
+    );
+
+    expect(filter.isActive, isTrue);
+    expect(filter.clear().isActive, isFalse);
+  });
+
+  test('filtra por periodo personalizado', () async {
+    await _saveInspection(
+      storage,
+      line: 'RAMAL 1',
+      tipoLinea: 'Ramal',
+      date: DateTime(2026, 2, 10),
+    );
+    await _saveInspection(
+      storage,
+      line: 'RAMAL 2',
+      tipoLinea: 'Ramal',
+      date: DateTime(2026, 2, 25),
+    );
+
+    final summary = await controller.loadSummary(
+      filter: DashboardFilter(
+        periodType: DashboardPeriodFilterType.custom,
+        customStart: DateTime(2026, 2, 1),
+        customEnd: DateTime(2026, 2, 15),
+      ),
+    );
+
+    expect(summary.totalInspections, 1);
+    expect(summary.lineStatuses.single.normalizedKey, 'RAMAL 1');
+  });
+
+  test('busca por nombre en prioridad', () async {
+    final lines = await controller.loadPriorityDetails(searchQuery: 'ramal 2');
+
+    expect(lines, hasLength(1));
+    expect(lines.single.normalizedKey, 'RAMAL 2');
+  });
+
+  test(
+    'detalle de hallazgos conserva datos visibles y excluye inválidos',
+    () async {
+      await _saveInspection(
+        storage,
+        line: 'RAMAL 1',
+        tipoLinea: 'Ramal',
+        responsible: 'Ana',
+        findings: ['Fuga', 'Vegetación'],
+      );
+
+      final db = await database.open();
+      await db.update(
+        'hallazgos',
+        {'is_invalid': 1},
+        where: 'tipo = ?',
+        whereArgs: ['Vegetación'],
+      );
+
+      final detail = await controller.loadFindingsDetail();
+
+      expect(detail.total, 1);
+      expect(detail.categories.single.category, 'Fuga');
+      expect(detail.items.single.lineName, 'RAMAL 1');
+      expect(detail.items.single.responsible, 'Ana');
+      expect(detail.items.single.description, 'Hallazgo');
+    },
+  );
 }
 
 CatalogData _catalog() {

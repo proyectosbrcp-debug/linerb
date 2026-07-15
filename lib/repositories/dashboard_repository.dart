@@ -21,9 +21,24 @@ class DashboardInspectionRecord {
 
 class DashboardFindingRecord {
   final String id;
+  final String inspectionId;
   final String category;
+  final String lineName;
+  final String tipoLinea;
+  final String responsible;
+  final DateTime? date;
+  final String description;
 
-  const DashboardFindingRecord({required this.id, required this.category});
+  const DashboardFindingRecord({
+    required this.id,
+    required this.category,
+    this.inspectionId = '',
+    this.lineName = '',
+    this.tipoLinea = '',
+    this.responsible = '',
+    this.date,
+    this.description = '',
+  });
 }
 
 abstract class DashboardRepository {
@@ -66,11 +81,22 @@ class SqliteDashboardRepository implements DashboardRepository {
   @override
   Future<List<DashboardFindingRecord>> loadValidFindings() async {
     final db = await database.open();
-    final rows = await db.query(
-      'hallazgos',
-      where: 'is_invalid = ? AND inspection_id IS NOT NULL',
-      whereArgs: [0],
-    );
+    final rows = await db.rawQuery('''
+SELECT
+  h.id AS id,
+  h.inspection_id AS inspection_id,
+  h.tipo AS tipo,
+  h.descripcion AS descripcion,
+  i.linea AS linea,
+  i.tipo_linea AS tipo_linea,
+  i.responsable AS responsable,
+  i.fecha_iso AS fecha_iso
+FROM hallazgos h
+INNER JOIN inspections i ON i.id = h.inspection_id
+WHERE h.is_invalid = 0
+  AND i.is_invalid = 0
+ORDER BY i.fecha_iso DESC
+''');
 
     return rows.map(_findingFromRow).toList();
   }
@@ -98,6 +124,12 @@ class SqliteDashboardRepository implements DashboardRepository {
     return DashboardFindingRecord(
       id: row['id'] as String,
       category: row['tipo'] as String,
+      inspectionId: row['inspection_id'] as String,
+      lineName: row['linea'] as String,
+      tipoLinea: row['tipo_linea'] as String,
+      responsible: row['responsable'] as String,
+      date: DateTime.parse(row['fecha_iso'] as String),
+      description: row['descripcion'] as String,
     );
   }
 

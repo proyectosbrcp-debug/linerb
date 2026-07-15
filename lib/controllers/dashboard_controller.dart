@@ -16,7 +16,9 @@ class DashboardController {
     this.semaforoRule = const LineSemaforoRule(),
   });
 
-  Future<DashboardSummary> loadSummary() async {
+  Future<DashboardSummary> loadSummary({
+    DashboardFilter filter = const DashboardFilter(),
+  }) async {
     final catalog = await repository.loadCatalog();
     final catalogLines = lineNormalizer.catalogLines(catalog);
     final inspections = await repository.loadValidInspections();
@@ -24,6 +26,83 @@ class DashboardController {
     final invalidRecordsExcluded = await repository.countInvalidRecords();
     final now = clock();
 
+    final statuses = _lineStatuses(catalogLines, inspections, now);
+    final filteredStatuses = _filterStatuses(
+      statuses,
+      inspections,
+      filter,
+      now,
+    );
+    final allowedLineKeys = filteredStatuses
+        .map((status) => status.normalizedKey)
+        .toSet();
+    final filteredInspections = inspections.where((inspection) {
+      final key = _inspectionKey(inspection);
+      return allowedLineKeys.contains(key) &&
+          _matchesInspectionFilters(inspection, filter, now);
+    }).toList();
+    final filteredFindings = findings.where((finding) {
+      final key = _findingKey(finding);
+      return allowedLineKeys.contains(key) &&
+          _matchesFindingFilters(finding, filter, now);
+    }).toList();
+
+    return _buildSummary(
+      statuses: filteredStatuses,
+      inspections: filteredInspections,
+      findings: filteredFindings,
+      invalidRecordsExcluded: invalidRecordsExcluded,
+    );
+  }
+
+  Future<List<LineInspectionStatus>> loadPriorityDetails({
+    DashboardFilter filter = const DashboardFilter(),
+    String searchQuery = '',
+  }) async {
+    final summary = await loadSummary(filter: filter);
+    final query = searchQuery.trim().toUpperCase();
+    if (query.isEmpty) return summary.lineStatuses;
+
+    return summary.lineStatuses
+        .where((status) => status.lineName.toUpperCase().contains(query))
+        .toList();
+  }
+
+  Future<DashboardFindingsDetail> loadFindingsDetail({
+    DashboardFilter filter = const DashboardFilter(),
+  }) async {
+    final catalog = await repository.loadCatalog();
+    final catalogLines = lineNormalizer.catalogLines(catalog);
+    final inspections = await repository.loadValidInspections();
+    final findings = await repository.loadValidFindings();
+    final now = clock();
+    final statuses = _filterStatuses(
+      _lineStatuses(catalogLines, inspections, now),
+      inspections,
+      filter,
+      now,
+    );
+    final allowedLineKeys = statuses
+        .map((status) => status.normalizedKey)
+        .toSet();
+    final filteredFindings = findings.where((finding) {
+      final key = _findingKey(finding);
+      return allowedLineKeys.contains(key) &&
+          _matchesFindingFilters(finding, filter, now);
+    }).toList();
+
+    return DashboardFindingsDetail(
+      total: filteredFindings.length,
+      categories: _findingsByCategory(filteredFindings),
+      items: filteredFindings.map(_findingDetailItem).toList(),
+    );
+  }
+
+  List<LineInspectionStatus> _lineStatuses(
+    List<NormalizedLine> catalogLines,
+    List<DashboardInspectionRecord> inspections,
+    DateTime now,
+  ) {
     final inspectionsByLine = <String, List<DashboardInspectionRecord>>{};
     final lineByKey = <String, NormalizedLine>{};
 
@@ -47,6 +126,9 @@ class DashboardController {
       final lastInspection = lineInspections.isEmpty
           ? null
           : lineInspections.first.date;
+      final lastResponsible = lineInspections.isEmpty
+          ? null
+          : lineInspections.first.responsible;
       final semaforo = semaforoRule.evaluate(lastInspection, now);
 
       return LineInspectionStatus(
@@ -57,17 +139,28 @@ class DashboardController {
         inspectionCount: lineInspections.length,
         semaforoStatus: semaforo.status,
         daysSinceInspection: semaforo.daysSinceInspection,
+        lastResponsible: lastResponsible,
       );
     }).toList();
 
     statuses.sort(_prioritizeLine);
+    return statuses;
+  }
+
+  DashboardSummary _buildSummary({
+    required List<LineInspectionStatus> statuses,
+    required List<DashboardInspectionRecord> inspections,
+    required List<DashboardFindingRecord> findings,
+    required int invalidRecordsExcluded,
+  }) {
+    final inspectedLineKeys = inspections.map(_inspectionKey).toSet();
 
     final inspectedLines = statuses
-        .where((status) => status.inspectionCount > 0)
+        .where((status) => inspectedLineKeys.contains(status.normalizedKey))
         .length;
-    final totalCatalogLines = catalogLines.length;
+    final totalCatalogLines = statuses.length;
     final neverInspectedLines = statuses
-        .where((status) => status.inspectionCount == 0)
+        .where((status) => !inspectedLineKeys.contains(status.normalizedKey))
         .length;
     final coverage = totalCatalogLines == 0
         ? 0.0
@@ -110,6 +203,123 @@ class DashboardController {
         _monthStart,
       ),
       inspectionsByResponsible: _byResponsible(inspections),
+    );
+  }
+
+  List<LineInspectionStatus> _filterStatuses(
+    List<LineInspectionStatus> statuses,
+    List<DashboardInspectionRecord> inspections,
+    DashboardFilter filter,
+    DateTime now,
+  ) {
+    final matchingInspectionKeys = inspections
+        .where(
+          (inspection) => _matchesInspectionFilters(inspection, filter, now),
+        )
+        .map(_inspectionKey)
+        .toSet();
+    final shouldRequireMatchingInspection =
+        (filter.responsible != null && filter.responsible!.trim().isNotEmpty) ||
+        filter.periodType != DashboardPeriodFilterType.all;
+
+    return statuses.where((status) {
+      if (!_matchesLineType(status.kind, filter.lineType)) return false;
+      if (!_matchesSemaforo(status.semaforoStatus, filter.semaforo)) {
+        return false;
+      }
+      if (shouldRequireMatchingInspection &&
+          !matchingInspectionKeys.contains(status.normalizedKey)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  bool _matchesInspectionFilters(
+    DashboardInspectionRecord inspection,
+    DashboardFilter filter,
+    DateTime now,
+  ) {
+    final responsible = filter.responsible?.trim();
+    if (responsible != null &&
+        responsible.isNotEmpty &&
+        inspection.responsible.trim() != responsible) {
+      return false;
+    }
+
+    final period = filter.resolvePeriod(now);
+    if (period != null && !period.contains(inspection.date)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _matchesFindingFilters(
+    DashboardFindingRecord finding,
+    DashboardFilter filter,
+    DateTime now,
+  ) {
+    final responsible = filter.responsible?.trim();
+    if (responsible != null &&
+        responsible.isNotEmpty &&
+        finding.responsible.trim() != responsible) {
+      return false;
+    }
+
+    final period = filter.resolvePeriod(now);
+    final findingDate = finding.date;
+    if (period != null &&
+        (findingDate == null || !period.contains(findingDate))) {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _matchesLineType(LineKind kind, DashboardLineTypeFilter filter) {
+    return switch (filter) {
+      DashboardLineTypeFilter.all => true,
+      DashboardLineTypeFilter.ramal => kind == LineKind.ramal,
+      DashboardLineTypeFilter.troncal => kind == LineKind.troncal,
+      DashboardLineTypeFilter.subtroncal => kind == LineKind.subtroncal,
+    };
+  }
+
+  bool _matchesSemaforo(
+    LineSemaforoStatus status,
+    DashboardSemaforoFilter filter,
+  ) {
+    return switch (filter) {
+      DashboardSemaforoFilter.all => true,
+      DashboardSemaforoFilter.verde => status == LineSemaforoStatus.verde,
+      DashboardSemaforoFilter.amarillo => status == LineSemaforoStatus.amarillo,
+      DashboardSemaforoFilter.rojo => status == LineSemaforoStatus.rojo,
+    };
+  }
+
+  String _inspectionKey(DashboardInspectionRecord inspection) {
+    return lineNormalizer
+        .normalize(inspection.lineName, tipoLinea: inspection.tipoLinea)
+        .normalizedKey;
+  }
+
+  String _findingKey(DashboardFindingRecord finding) {
+    return lineNormalizer
+        .normalize(finding.lineName, tipoLinea: finding.tipoLinea)
+        .normalizedKey;
+  }
+
+  DashboardFindingDetailItem _findingDetailItem(
+    DashboardFindingRecord finding,
+  ) {
+    return DashboardFindingDetailItem(
+      id: finding.id,
+      category: finding.category,
+      lineName: finding.lineName,
+      responsible: finding.responsible,
+      date: finding.date,
+      description: finding.description,
     );
   }
 

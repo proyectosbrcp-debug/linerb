@@ -1,23 +1,31 @@
 import 'package:flutter/material.dart';
 
+import '../../controllers/dashboard_controller.dart';
 import '../../core/di/app_dependencies.dart';
 import '../../controllers/selection_line_controller.dart';
 import '../avance/avance_page.dart';
+import '../dashboard/dashboard_page.dart';
 import '../historial/historial_page.dart';
 import '../inspeccion/registro_inspeccion_page.dart';
 
 class SeleccionLineaPage extends StatefulWidget {
   final String usuario;
+  final SelectionLineController? selectionLineController;
+  final DashboardController? dashboardController;
 
-  const SeleccionLineaPage({super.key, required this.usuario});
+  const SeleccionLineaPage({
+    super.key,
+    required this.usuario,
+    this.selectionLineController,
+    this.dashboardController,
+  });
 
   @override
   State<SeleccionLineaPage> createState() => _SeleccionLineaPageState();
 }
 
 class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
-  final SelectionLineController selectionLineController =
-      AppDependencies.selectionLineController();
+  late final SelectionLineController selectionLineController;
   Map<String, dynamic> troncalesJson = {};
   List<String> ramalesJson = [];
 
@@ -35,6 +43,9 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
   @override
   void initState() {
     super.initState();
+    selectionLineController =
+        widget.selectionLineController ??
+        AppDependencies.selectionLineController();
     cargarJson();
   }
 
@@ -89,171 +100,218 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(Icons.route, size: 80, color: Color(0xFF0D47A1)),
-            const SizedBox(height: 15),
-            const Text(
-              "Seleccione el tipo de línea a inspeccionar",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 25),
-            DropdownButtonFormField<String>(
-              value: tipoLinea,
-              decoration: const InputDecoration(
-                labelText: "Tipo de línea",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.merge_type),
-              ),
-              items: tiposLinea.map((item) {
-                return DropdownMenuItem(value: item, child: Text(item));
-              }).toList(),
-              onChanged: (valor) {
-                setState(() {
-                  tipoLinea = valor!;
-                  if (tipoLinea == 'Troncal') {
-                    troncalSeleccionada = troncalesJson.keys.first;
-                    subtroncalSeleccionada =
-                        troncalesJson[troncalSeleccionada]!.first;
-                    ramalSeleccionado = null;
-                  } else {
-                    troncalSeleccionada = null;
-                    subtroncalSeleccionada = null;
-                    ramalSeleccionado = ramalesJson.first;
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 15),
-            if (esTroncal) ...[
-              DropdownButtonFormField<String>(
-                value: troncalSeleccionada,
-                decoration: const InputDecoration(
-                  labelText: "Troncal",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.alt_route),
-                ),
-                items: troncalesJson.keys.map((item) {
-                  return DropdownMenuItem(value: item, child: Text(item));
-                }).toList(),
-                onChanged: (valor) {
-                  setState(() {
-                    troncalSeleccionada = valor!;
-                    subtroncalSeleccionada = List<String>.from(
-                      troncalesJson[troncalSeleccionada] ?? [],
-                    ).first;
-                  });
-                },
-              ),
-              const SizedBox(height: 15),
-              DropdownButtonFormField<String>(
-                value: subtroncalSeleccionada,
-                decoration: const InputDecoration(
-                  labelText: "Subtroncal",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.account_tree),
-                ),
-                items:
-                    List<String>.from(
-                      troncalesJson[troncalSeleccionada] ?? [],
-                    ).map((item) {
-                      return DropdownMenuItem<String>(
-                        value: item,
-                        child: Text(item),
-                      );
-                    }).toList(),
-                onChanged: (valor) {
-                  setState(() {
-                    subtroncalSeleccionada = valor!;
-                  });
-                },
-              ),
-            ] else ...[
-              DropdownButtonFormField<String>(
-                value: ramalSeleccionado,
-                decoration: const InputDecoration(
-                  labelText: "Ramal",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.account_tree),
-                ),
-                items: ramalesJson.map((item) {
-                  return DropdownMenuItem(value: item, child: Text(item));
-                }).toList(),
-                onChanged: (valor) {
-                  setState(() {
-                    ramalSeleccionado = valor!;
-                  });
-                },
-              ),
-            ],
-            const SizedBox(height: 25),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.info),
-                title: const Text("Selección actual"),
-                subtitle: Text(seleccionActual),
-              ),
-            ),
-            const Spacer(),
-            ElevatedButton.icon(
-              onPressed: seleccionValida
-                  ? () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => RegistroInspeccionPage(
-                            usuario: widget.usuario,
-                            tipoLinea: tipoLinea,
-                            seleccionLinea: seleccionActual,
-                          ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Icon(
+                        Icons.route,
+                        size: 80,
+                        color: Color(0xFF0D47A1),
+                      ),
+                      const SizedBox(height: 15),
+                      const Text(
+                        "Seleccione el tipo de línea a inspeccionar",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.bold,
                         ),
-                      );
-                    }
-                  : null,
-              icon: const Icon(Icons.play_arrow),
-              label: const Text("INICIAR INSPECCIÓN"),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 55),
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const HistorialPage(),
+                      ),
+                      const SizedBox(height: 25),
+                      DropdownButtonFormField<String>(
+                        value: tipoLinea,
+                        decoration: const InputDecoration(
+                          labelText: "Tipo de línea",
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.merge_type),
+                        ),
+                        items: tiposLinea.map((item) {
+                          return DropdownMenuItem(
+                            value: item,
+                            child: Text(item),
+                          );
+                        }).toList(),
+                        onChanged: (valor) {
+                          setState(() {
+                            tipoLinea = valor!;
+                            if (tipoLinea == 'Troncal') {
+                              troncalSeleccionada = troncalesJson.keys.first;
+                              subtroncalSeleccionada =
+                                  troncalesJson[troncalSeleccionada]!.first;
+                              ramalSeleccionado = null;
+                            } else {
+                              troncalSeleccionada = null;
+                              subtroncalSeleccionada = null;
+                              ramalSeleccionado = ramalesJson.first;
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 15),
+                      if (esTroncal) ...[
+                        DropdownButtonFormField<String>(
+                          value: troncalSeleccionada,
+                          decoration: const InputDecoration(
+                            labelText: "Troncal",
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.alt_route),
+                          ),
+                          items: troncalesJson.keys.map((item) {
+                            return DropdownMenuItem(
+                              value: item,
+                              child: Text(item),
+                            );
+                          }).toList(),
+                          onChanged: (valor) {
+                            setState(() {
+                              troncalSeleccionada = valor!;
+                              subtroncalSeleccionada = List<String>.from(
+                                troncalesJson[troncalSeleccionada] ?? [],
+                              ).first;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 15),
+                        DropdownButtonFormField<String>(
+                          value: subtroncalSeleccionada,
+                          decoration: const InputDecoration(
+                            labelText: "Subtroncal",
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.account_tree),
+                          ),
+                          items:
+                              List<String>.from(
+                                troncalesJson[troncalSeleccionada] ?? [],
+                              ).map((item) {
+                                return DropdownMenuItem<String>(
+                                  value: item,
+                                  child: Text(item),
+                                );
+                              }).toList(),
+                          onChanged: (valor) {
+                            setState(() {
+                              subtroncalSeleccionada = valor!;
+                            });
+                          },
+                        ),
+                      ] else ...[
+                        DropdownButtonFormField<String>(
+                          value: ramalSeleccionado,
+                          decoration: const InputDecoration(
+                            labelText: "Ramal",
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.account_tree),
+                          ),
+                          items: ramalesJson.map((item) {
+                            return DropdownMenuItem(
+                              value: item,
+                              child: Text(item),
+                            );
+                          }).toList(),
+                          onChanged: (valor) {
+                            setState(() {
+                              ramalSeleccionado = valor!;
+                            });
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 25),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.info),
+                          title: const Text("Selección actual"),
+                          subtitle: Text(seleccionActual),
+                        ),
+                      ),
+                      const Spacer(),
+                      ElevatedButton.icon(
+                        onPressed: seleccionValida
+                            ? () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        RegistroInspeccionPage(
+                                          usuario: widget.usuario,
+                                          tipoLinea: tipoLinea,
+                                          seleccionLinea: seleccionActual,
+                                        ),
+                                  ),
+                                );
+                              }
+                            : null,
+                        icon: const Icon(Icons.play_arrow),
+                        label: const Text("INICIAR INSPECCIÓN"),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 55),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const HistorialPage(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.history),
+                        label: const Text("HISTORIAL"),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 52),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  AvancePage(lineas: todasLasLineas()),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.analytics),
+                        label: const Text("AVANCE"),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 52),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => DashboardPage(
+                                controller: widget.dashboardController,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.dashboard),
+                        label: const Text("DASHBOARD"),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 52),
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              },
-              icon: const Icon(Icons.history),
-              label: const Text("HISTORIAL"),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
+                ),
               ),
             ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AvancePage(lineas: todasLasLineas()),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.analytics),
-              label: const Text("AVANCE"),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
