@@ -12,6 +12,7 @@ import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../models/inspeccion.dart';
 import '../../repositories/inspection_repository.dart';
+import '../../services/local_photo_service.dart';
 
 class ResumenInspeccionPage extends StatefulWidget {
   final String usuario;
@@ -56,6 +57,7 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
       AppDependencies.inspectionRepository;
   final InspectionRegistrationController registroController =
       AppDependencies.inspectionRegistrationController();
+  final LocalPhotoService photoService = AppDependencies.localPhotoService;
   late TextEditingController observacionGeneralController;
 
   @override
@@ -250,13 +252,10 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
 
     for (final h in widget.hallazgos) {
       final List<pw.MemoryImage> fotos = [];
+      final photoPaths = await photoService.pdfPhotoPaths(h);
 
-      if (h.foto1Path != null && File(h.foto1Path!).existsSync()) {
-        fotos.add(pw.MemoryImage(await File(h.foto1Path!).readAsBytes()));
-      }
-
-      if (h.foto2Path != null && File(h.foto2Path!).existsSync()) {
-        fotos.add(pw.MemoryImage(await File(h.foto2Path!).readAsBytes()));
+      for (final photoPath in photoPaths) {
+        fotos.add(pw.MemoryImage(await File(photoPath).readAsBytes()));
       }
 
       fotosPdf[h] = fotos;

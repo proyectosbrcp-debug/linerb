@@ -15,6 +15,7 @@ import '../../repositories/inspection_repository.dart';
 import '../../repositories/remote/firestore_remote_sync_data_source.dart';
 import '../../repositories/sync_repository.dart';
 import '../../services/device_identity_service.dart';
+import '../../services/local_photo_service.dart';
 import '../../services/remote_sync_applier.dart';
 import '../../services/sync_worker.dart';
 import '../../storage/catalog_cache_storage.dart';
@@ -45,6 +46,9 @@ class AppDependencies {
     clock: clock,
     deviceIdProvider: deviceIdentityService.deviceId,
     syncQueueStorage: syncQueueStorage,
+  );
+  static final LocalPhotoService localPhotoService = LocalPhotoService(
+    clock: clock,
   );
   static final SyncRepository syncRepository = LocalSyncRepository(
     queueStorage: syncQueueStorage,

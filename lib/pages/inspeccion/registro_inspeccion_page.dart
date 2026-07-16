@@ -2,13 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../controllers/inspection_registration_controller.dart';
 import '../../core/di/app_dependencies.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
+import '../../models/inspection_local_photos.dart';
 import '../../repositories/draft_repository.dart';
+import '../../services/local_photo_service.dart';
 import '../resumen/resumen_inspeccion_page.dart';
 
 class RegistroInspeccionPage extends StatefulWidget {
@@ -42,7 +43,7 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
   File? foto1;
   File? foto2;
 
-  final ImagePicker picker = ImagePicker();
+  final LocalPhotoService photoService = AppDependencies.localPhotoService;
 
   final TextEditingController responsableController = TextEditingController();
   final TextEditingController puntoReferenciaController =
@@ -80,7 +81,13 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
     estadoLinea = borrador.estadoLinea;
 
     hallazgosRegistrados.clear();
-    hallazgosRegistrados.addAll(borrador.hallazgos);
+    final hallazgosConFotosLocales = <HallazgoInspeccion>[];
+    for (final hallazgo in borrador.hallazgos) {
+      hallazgosConFotosLocales.add(
+        await photoService.sanitizeHallazgoPhotos(hallazgo),
+      );
+    }
+    hallazgosRegistrados.addAll(hallazgosConFotosLocales);
 
     setState(() {});
   }
@@ -96,31 +103,33 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
   }
 
   Future<void> tomarFoto1() async {
-    final XFile? imagen = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 80,
+    final path = await photoService.capturePhoto(
+      ownerId: widget.seleccionLinea,
+      slot: LocalPhotoSlot.photo1,
+      previousPath: foto1?.path,
     );
 
     if (!mounted) return;
 
-    if (imagen != null) {
+    if (path != null) {
       setState(() {
-        foto1 = File(imagen.path);
+        foto1 = File(path);
       });
     }
   }
 
   Future<void> tomarFoto2() async {
-    final XFile? imagen = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 80,
+    final path = await photoService.capturePhoto(
+      ownerId: widget.seleccionLinea,
+      slot: LocalPhotoSlot.photo2,
+      previousPath: foto2?.path,
     );
 
     if (!mounted) return;
 
-    if (imagen != null) {
+    if (path != null) {
       setState(() {
-        foto2 = File(imagen.path);
+        foto2 = File(path);
       });
     }
   }
