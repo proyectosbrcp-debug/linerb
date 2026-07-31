@@ -2,6 +2,320 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profilePath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasActiveProfile() {
+      return signedIn() &&
+        exists(profilePath()) &&
+        get(profilePath()).data.active == true;
+    }
+
+    function role() {
+      return get(profilePath()).data.role;
+    }
+
+    function isAdministrator() {
+      return hasActiveProfile() && role() == 'administrator';
+    }
+
+    function isSupervisor() {
+      return hasActiveProfile() && role() == 'supervisor';
+    }
+
+    function isInspector() {
+      return hasActiveProfile() && role() == 'inspector';
+    }
+
+    function canCreateStructuredData() {
+      return isAdministrator() || isSupervisor() || isInspector();
+    }
+
+    function canUpdateStructuredData() {
+      return isAdministrator() || isSupervisor();
+    }
+
+    function isAllowedRole(value) {
+      return value in [
+        'administrator',
+        'supervisor',
+        'inspector',
+        'viewer',
+      ];
+    }
+
+    function profileFieldsAreValid(uid) {
+      return userProfileFieldsAreAllowed() &&
+        request.resource.data.keys().hasAll([
+          'uid',
+          'display_name',
+          'email',
+          'role',
+          'active',
+          'created_at',
+          'updated_at',
+        ]) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.display_name is string &&
+        request.resource.data.email is string &&
+        request.resource.data.role is string &&
+        isAllowedRole(request.resource.data.role) &&
+        request.resource.data.active is bool &&
+        request.resource.data.created_at is timestamp &&
+        request.resource.data.updated_at is timestamp;
+    }
+
+    function userProfileFieldsAreAllowed() {
+      return request.resource.data.keys().hasOnly([
+        'uid',
+        'display_name',
+        'email',
+        'role',
+        'active',
+        'created_at',
+        'updated_at',
+      ]);
+    }
+
+    function inspectionFieldsAreValid() {
+      return inspectionFieldsAreAllowed() &&
+        request.resource.data.keys().hasAll([
+          'global_id',
+          'fecha',
+          'responsable',
+          'usuario',
+          'tipo_linea',
+          'linea',
+          'punto_referencia',
+          'estado_linea',
+          'observacion_general',
+          'created_at',
+          'updated_at',
+          'created_by',
+          'updated_by',
+          'device_id',
+          'local_version',
+          'remote_version',
+          'sync_status',
+        ]) &&
+        request.resource.data.global_id is string &&
+        request.resource.data.fecha is timestamp &&
+        request.resource.data.responsable is string &&
+        request.resource.data.usuario is string &&
+        request.resource.data.tipo_linea is string &&
+        request.resource.data.linea is string &&
+        (!('subtroncal' in request.resource.data) ||
+          request.resource.data.subtroncal is string ||
+          request.resource.data.subtroncal == null) &&
+        request.resource.data.punto_referencia is string &&
+        request.resource.data.estado_linea is string &&
+        request.resource.data.observacion_general is string &&
+        request.resource.data.created_at is timestamp &&
+        request.resource.data.updated_at is timestamp &&
+        request.resource.data.created_by == request.auth.uid &&
+        request.resource.data.updated_by == request.auth.uid &&
+        request.resource.data.device_id is string &&
+        request.resource.data.local_version is int &&
+        request.resource.data.remote_version is int &&
+        request.resource.data.sync_status is string &&
+        (!('deleted_at' in request.resource.data) ||
+          request.resource.data.deleted_at is timestamp ||
+          request.resource.data.deleted_at == null);
+    }
+
+    function inspectionUpdateFieldsAreValid() {
+      return inspectionFieldsAreAllowed() &&
+        request.resource.data.keys().hasAll([
+          'global_id',
+          'fecha',
+          'responsable',
+          'usuario',
+          'tipo_linea',
+          'linea',
+          'punto_referencia',
+          'estado_linea',
+          'observacion_general',
+          'created_at',
+          'updated_at',
+          'created_by',
+          'updated_by',
+          'device_id',
+          'local_version',
+          'remote_version',
+          'sync_status',
+        ]) &&
+        request.resource.data.global_id is string &&
+        request.resource.data.fecha is timestamp &&
+        request.resource.data.responsable is string &&
+        request.resource.data.usuario is string &&
+        request.resource.data.tipo_linea is string &&
+        request.resource.data.linea is string &&
+        (!('subtroncal' in request.resource.data) ||
+          request.resource.data.subtroncal is string ||
+          request.resource.data.subtroncal == null) &&
+        request.resource.data.punto_referencia is string &&
+        request.resource.data.estado_linea is string &&
+        request.resource.data.observacion_general is string &&
+        request.resource.data.created_at is timestamp &&
+        request.resource.data.updated_at is timestamp &&
+        request.resource.data.created_by == resource.data.created_by &&
+        request.resource.data.updated_by == request.auth.uid &&
+        request.resource.data.device_id is string &&
+        request.resource.data.local_version is int &&
+        request.resource.data.remote_version is int &&
+        request.resource.data.sync_status is string &&
+        (!('deleted_at' in request.resource.data) ||
+          request.resource.data.deleted_at is timestamp ||
+          request.resource.data.deleted_at == null);
+    }
+
+    function inspectionFieldsAreAllowed() {
+      return request.resource.data.keys().hasOnly([
+        'global_id',
+        'fecha',
+        'responsable',
+        'usuario',
+        'tipo_linea',
+        'linea',
+        'subtroncal',
+        'punto_referencia',
+        'estado_linea',
+        'observacion_general',
+        'created_at',
+        'updated_at',
+        'created_by',
+        'updated_by',
+        'device_id',
+        'local_version',
+        'remote_version',
+        'sync_status',
+        'deleted_at',
+      ]);
+    }
+
+    function findingFieldsAreValid() {
+      return findingFieldsAreAllowed() &&
+        request.resource.data.keys().hasAll([
+          'global_id',
+          'inspection_global_id',
+          'categoria',
+          'subcategoria',
+          'descripcion',
+          'latitud',
+          'longitud',
+          'created_at',
+          'updated_at',
+          'created_by',
+          'updated_by',
+          'device_id',
+          'local_version',
+          'remote_version',
+        ]) &&
+        request.resource.data.global_id is string &&
+        request.resource.data.inspection_global_id is string &&
+        request.resource.data.categoria is string &&
+        request.resource.data.subcategoria is string &&
+        request.resource.data.descripcion is string &&
+        request.resource.data.latitud is string &&
+        request.resource.data.longitud is string &&
+        request.resource.data.created_at is timestamp &&
+        request.resource.data.updated_at is timestamp &&
+        request.resource.data.created_by == request.auth.uid &&
+        request.resource.data.updated_by == request.auth.uid &&
+        request.resource.data.device_id is string &&
+        request.resource.data.local_version is int &&
+        request.resource.data.remote_version is int &&
+        (!('deleted_at' in request.resource.data) ||
+          request.resource.data.deleted_at is timestamp ||
+          request.resource.data.deleted_at == null);
+    }
+
+    function findingUpdateFieldsAreValid() {
+      return findingFieldsAreAllowed() &&
+        request.resource.data.keys().hasAll([
+          'global_id',
+          'inspection_global_id',
+          'categoria',
+          'subcategoria',
+          'descripcion',
+          'latitud',
+          'longitud',
+          'created_at',
+          'updated_at',
+          'created_by',
+          'updated_by',
+          'device_id',
+          'local_version',
+          'remote_version',
+        ]) &&
+        request.resource.data.global_id is string &&
+        request.resource.data.inspection_global_id is string &&
+        request.resource.data.categoria is string &&
+        request.resource.data.subcategoria is string &&
+        request.resource.data.descripcion is string &&
+        request.resource.data.latitud is string &&
+        request.resource.data.longitud is string &&
+        request.resource.data.created_at is timestamp &&
+        request.resource.data.updated_at is timestamp &&
+        request.resource.data.created_by == resource.data.created_by &&
+        request.resource.data.updated_by == request.auth.uid &&
+        request.resource.data.device_id is string &&
+        request.resource.data.local_version is int &&
+        request.resource.data.remote_version is int &&
+        (!('deleted_at' in request.resource.data) ||
+          request.resource.data.deleted_at is timestamp ||
+          request.resource.data.deleted_at == null);
+    }
+
+    function findingFieldsAreAllowed() {
+      return request.resource.data.keys().hasOnly([
+        'global_id',
+        'inspection_global_id',
+        'categoria',
+        'subcategoria',
+        'descripcion',
+        'latitud',
+        'longitud',
+        'created_at',
+        'updated_at',
+        'created_by',
+        'updated_by',
+        'device_id',
+        'local_version',
+        'remote_version',
+        'deleted_at',
+      ]);
+    }
+
+    match /users/{uid} {
+      allow read: if hasActiveProfile() &&
+        (uid == request.auth.uid || isAdministrator());
+      allow create: if isAdministrator() && profileFieldsAreValid(uid);
+      allow update: if isAdministrator() &&
+        profileFieldsAreValid(uid) &&
+        (uid != request.auth.uid || request.resource.data.role == resource.data.role);
+      allow delete: if isAdministrator() && uid != request.auth.uid;
+    }
+
+    match /inspections/{inspectionId} {
+      allow read: if hasActiveProfile();
+      allow create: if canCreateStructuredData() && inspectionFieldsAreValid();
+      allow update: if canUpdateStructuredData() && inspectionUpdateFieldsAreValid();
+      allow delete: if isAdministrator();
+    }
+
+    match /findings/{findingId} {
+      allow read: if hasActiveProfile();
+      allow create: if canCreateStructuredData() && findingFieldsAreValid();
+      allow update: if canUpdateStructuredData() && findingUpdateFieldsAreValid();
+      allow delete: if isAdministrator();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

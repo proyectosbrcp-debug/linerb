@@ -28,8 +28,4 @@ La configuración de emulador queda declarada en `firebase.json` para pruebas co
 
 Sprint 4.3 deberá incorporar autenticación real y reglas basadas en usuario/rol.
 
-No se deben publicar reglas abiertas como:
-
-```text
-allow read, write: if true;
-```
+No se deben publicar reglas abiertas que permitan lectura y escritura global sin autenticación.

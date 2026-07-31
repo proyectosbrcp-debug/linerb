@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../pages/login/inicio_page.dart';
+import '../../pages/auth/auth_gate.dart';
 
 class LinerbApp extends StatelessWidget {
   const LinerbApp({super.key});
@@ -14,7 +14,7 @@ class LinerbApp extends StatelessWidget {
         primaryColor: const Color(0xFF0D47A1),
         useMaterial3: true,
       ),
-      home: const InicioPage(),
+      home: const AuthGate(),
     );
   }
 }

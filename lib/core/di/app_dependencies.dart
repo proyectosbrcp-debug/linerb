@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import '../../controllers/auth_controller.dart';
 import '../../controllers/dashboard_controller.dart';
 import '../../controllers/history_controller.dart';
 import '../../controllers/inspection_registration_controller.dart';
@@ -11,13 +12,20 @@ import '../../core/time/app_clock.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../repositories/dashboard_repository.dart';
 import '../../repositories/draft_repository.dart';
+import '../../repositories/auth_repository.dart';
+import '../../repositories/firebase_auth_repository.dart';
+import '../../repositories/firestore_user_profile_repository.dart';
 import '../../repositories/inspection_repository.dart';
 import '../../repositories/remote/firestore_remote_sync_data_source.dart';
 import '../../repositories/sync_repository.dart';
+import '../../repositories/unavailable_auth_repository.dart';
+import '../../repositories/unavailable_user_profile_repository.dart';
+import '../../repositories/user_profile_repository.dart';
 import '../../services/device_identity_service.dart';
 import '../../services/local_photo_service.dart';
 import '../../services/remote_sync_applier.dart';
 import '../../services/sync_worker.dart';
+import '../../storage/auth_session_storage.dart';
 import '../../storage/catalog_cache_storage.dart';
 import '../../storage/draft_storage.dart';
 import '../../storage/fallback_draft_storage.dart';
@@ -30,12 +38,27 @@ import '../../storage/local/local_database_storage.dart';
 import '../../storage/local/local_sync_queue_storage.dart';
 import '../../storage/local/local_sync_metadata_storage.dart';
 import '../../storage/migration/v1_data_migration_service.dart';
+import '../../storage/shared_preferences_auth_session_storage.dart';
 import '../../storage/shared_preferences_storage.dart';
 
 class AppDependencies {
   static const Clock clock = SystemClock();
   static final DeviceIdentityService deviceIdentityService =
       DeviceIdentityService(clock: clock.now);
+  static const AuthSessionStorage authSessionStorage =
+      SharedPreferencesAuthSessionStorage();
+  static final AuthRepository authRepository = Firebase.apps.isEmpty
+      ? const UnavailableAuthRepository()
+      : FirebaseAuthRepository();
+  static final UserProfileRepository userProfileRepository =
+      Firebase.apps.isEmpty
+      ? const UnavailableUserProfileRepository()
+      : FirestoreUserProfileRepository(firestore: FirebaseFirestore.instance);
+  static final AuthController authController = AuthController(
+    authRepository: authRepository,
+    userProfileRepository: userProfileRepository,
+    sessionStorage: authSessionStorage,
+  );
   static final LinerbDatabase linerbDatabase = LinerbDatabase();
   static final LocalSyncQueueStorage syncQueueStorage = LocalSyncQueueStorage(
     database: linerbDatabase,
@@ -45,6 +68,7 @@ class AppDependencies {
     database: linerbDatabase,
     clock: clock,
     deviceIdProvider: deviceIdentityService.deviceId,
+    userIdProvider: () async => authController.currentUserId,
     syncQueueStorage: syncQueueStorage,
   );
   static final LocalPhotoService localPhotoService = LocalPhotoService(

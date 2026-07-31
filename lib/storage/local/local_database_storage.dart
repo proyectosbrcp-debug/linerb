@@ -28,6 +28,7 @@ class LocalDatabaseStorage
   final bool failSyncQueueWrites;
   final Clock clock;
   final Future<String> Function()? deviceIdProvider;
+  final Future<String> Function()? userIdProvider;
   final LocalSyncQueueStorage? syncQueueStorage;
 
   LocalDatabaseStorage({
@@ -38,6 +39,7 @@ class LocalDatabaseStorage
     this.failSyncQueueWrites = false,
     this.clock = const SystemClock(),
     this.deviceIdProvider,
+    this.userIdProvider,
     this.syncQueueStorage,
   });
 
@@ -104,7 +106,7 @@ class LocalDatabaseStorage
       final now = clock.now();
       final nowIso = now.toIso8601String();
       final deviceId = await _deviceId();
-      const userId = 'local_user';
+      final userId = await _userId();
       final id = StableId.fromParts('db_inspection', [
         inspeccion.linea,
         inspeccion.tipoLinea,
@@ -490,6 +492,12 @@ WHERE i.linea = ?
   Future<String> _deviceId() async {
     final provider = deviceIdProvider;
     if (provider == null) return 'local_device';
+    return provider();
+  }
+
+  Future<String> _userId() async {
+    final provider = userIdProvider;
+    if (provider == null) return 'local_user';
     return provider();
   }
 

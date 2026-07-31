@@ -10,7 +10,6 @@ import 'package:linerb/models/inspeccion.dart';
 import 'package:linerb/pages/avance/avance_page.dart';
 import 'package:linerb/pages/historial/historial_page.dart';
 import 'package:linerb/pages/inspeccion/registro_inspeccion_page.dart';
-import 'package:linerb/pages/login/inicio_page.dart';
 import 'package:linerb/services/datos_app.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -66,33 +65,44 @@ void main() {
     });
   });
 
-  group('Login V1', () {
-    testWidgets('muestra los controles y roles actuales', (tester) async {
+  group('Login seguro Sprint 4.4', () {
+    testWidgets('muestra controles de autenticación segura', (tester) async {
       await tester.pumpWidget(const LinerbApp());
+      await tester.pumpAndSettle();
 
       expect(find.text('LINERB'), findsOneWidget);
       expect(find.text('Sistema de Inspección de Líneas'), findsOneWidget);
-      expect(find.text('SUPER'), findsOneWidget);
-      expect(find.text('INICIAR'), findsOneWidget);
+      expect(find.text('Correo'), findsOneWidget);
+      expect(find.text('Contraseña'), findsOneWidget);
+      expect(find.text('INICIAR SESIÓN'), findsOneWidget);
+      expect(find.text('Recuperar contraseña'), findsOneWidget);
+      expect(find.text('SUPER'), findsNothing);
+      expect(find.text('INSPE'), findsNothing);
 
-      final passwordField = tester.widget<TextField>(find.byType(TextField));
+      final passwordField = tester.widget<TextField>(
+        find.widgetWithText(TextField, 'Contraseña'),
+      );
       expect(passwordField.obscureText, isTrue);
-
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-
-      expect(find.text('INSPE'), findsOneWidget);
     });
 
-    testWidgets('rechaza credenciales no reconocidas', (tester) async {
+    testWidgets('rechaza acceso no disponible con mensaje genérico', (
+      tester,
+    ) async {
       await tester.pumpWidget(const LinerbApp());
+      await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), 'incorrecta');
-      await tester.tap(find.text('INICIAR'));
-      await tester.pump();
+      await tester.enterText(find.widgetWithText(TextField, 'Correo'), 'x@y.z');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Contraseña'),
+        'incorrecta',
+      );
+      await tester.tap(find.text('INICIAR SESIÓN'));
+      await tester.pumpAndSettle();
 
-      expect(find.text('Usuario o contraseña incorrectos'), findsOneWidget);
-      expect(find.byType(InicioPage), findsOneWidget);
+      expect(
+        find.text('No fue posible completar la solicitud.'),
+        findsOneWidget,
+      );
     });
   });
 

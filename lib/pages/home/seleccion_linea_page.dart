@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../controllers/dashboard_controller.dart';
-import '../../core/di/app_dependencies.dart';
 import '../../controllers/selection_line_controller.dart';
+import '../../core/di/app_dependencies.dart';
+import '../../models/user_profile.dart';
+import '../../services/permission_service.dart';
 import '../avance/avance_page.dart';
 import '../dashboard/dashboard_page.dart';
 import '../historial/historial_page.dart';
@@ -10,12 +12,16 @@ import '../inspeccion/registro_inspeccion_page.dart';
 
 class SeleccionLineaPage extends StatefulWidget {
   final String usuario;
+  final UserProfile? userProfile;
+  final PermissionService permissionService;
   final SelectionLineController? selectionLineController;
   final DashboardController? dashboardController;
 
   const SeleccionLineaPage({
     super.key,
     required this.usuario,
+    this.userProfile,
+    this.permissionService = const PermissionService(),
     this.selectionLineController,
     this.dashboardController,
   });
@@ -68,6 +74,12 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
       return troncalSeleccionada != null && subtroncalSeleccionada != null;
     }
     return ramalSeleccionado != null;
+  }
+
+  bool get puedeCrearInspeccion {
+    final profile = widget.userProfile;
+    if (profile == null) return true;
+    return widget.permissionService.canCreateInspection(profile);
   }
 
   List<String> todasLasLineas() {
@@ -233,7 +245,7 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
                       ),
                       const Spacer(),
                       ElevatedButton.icon(
-                        onPressed: seleccionValida
+                        onPressed: seleccionValida && puedeCrearInspeccion
                             ? () {
                                 Navigator.push(
                                   context,
