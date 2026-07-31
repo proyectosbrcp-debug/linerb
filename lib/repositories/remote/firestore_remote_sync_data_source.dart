@@ -75,17 +75,13 @@ class FirestoreRemoteSyncDataSource implements RemoteSyncDataSource {
   @override
   Future<void> createFinding(Map<String, Object?> payload) async {
     final remote = findingMapper.fromLocalPayload(payload);
-    await _findingRef(
-      remote['inspection_global_id'] as String,
-      remote['global_id'] as String,
-    ).set(remote);
+    await _findingRef(remote['global_id'] as String).set(remote);
   }
 
   @override
   Future<void> updateFinding(Map<String, Object?> payload) async {
     final remote = findingMapper.fromLocalPayload(payload);
     await _findingRef(
-      remote['inspection_global_id'] as String,
       remote['global_id'] as String,
     ).set(remote, SetOptions(merge: true));
   }
@@ -93,10 +89,7 @@ class FirestoreRemoteSyncDataSource implements RemoteSyncDataSource {
   @override
   Future<void> deleteFinding(Map<String, Object?> payload) async {
     final remote = findingMapper.fromLocalPayload(payload);
-    await _findingRef(
-      remote['inspection_global_id'] as String,
-      remote['global_id'] as String,
-    ).set({
+    await _findingRef(remote['global_id'] as String).set({
       'global_id': remote['global_id'],
       'inspection_global_id': remote['inspection_global_id'],
       'deleted_at': remote['deleted_at'] ?? Timestamp.now(),
@@ -106,37 +99,33 @@ class FirestoreRemoteSyncDataSource implements RemoteSyncDataSource {
   }
 
   @override
-  Future<RemoteChangeSet> fetchChanges({DateTime? since}) async {
-    Query<Map<String, dynamic>> query = firestore.collection('inspections');
-    if (since != null) {
-      query = query.where(
-        'updated_at',
-        isGreaterThan: Timestamp.fromDate(since),
-      );
-    }
-    final snapshot = await query.get();
-    final inspections = <Map<String, Object?>>[];
-    var cursor = since;
+  Future<RemoteChangeSet> fetchChanges({
+    DateTime? since,
+    RemoteSyncCursors? cursors,
+  }) async {
+    final legacyCursor = since == null
+        ? null
+        : SyncCursor(updatedAt: since, globalId: '');
+    final inspectionCursor = cursors?.inspections ?? legacyCursor;
+    final findingCursor = cursors?.findings ?? legacyCursor;
 
-    for (final doc in snapshot.docs) {
-      final mapped = inspectionMapper.fromRemote(doc.data());
-      if (mapped == null) continue;
-      inspections.add(mapped);
-      final updatedAt = mapped['updated_at'];
-      if (updatedAt is Timestamp) {
-        final date = updatedAt.toDate();
-        if (cursor == null || date.isAfter(cursor)) cursor = date;
-      }
-    }
-
-    final findings = await fetchFindingsForInspections(
-      inspections.map((item) => item['global_id']).whereType<String>().toList(),
+    final inspectionResult = await _fetchCollectionChanges(
+      collection: 'inspections',
+      cursor: inspectionCursor,
+      mapper: inspectionMapper.fromRemote,
+    );
+    final findingResult = await _fetchCollectionChanges(
+      collection: 'findings',
+      cursor: findingCursor,
+      mapper: findingMapper.fromRemote,
     );
 
     return RemoteChangeSet(
-      inspections: inspections,
-      findings: findings,
-      cursor: cursor,
+      inspections: inspectionResult.items,
+      findings: findingResult.items,
+      cursor: inspectionResult.cursor?.updatedAt ?? since,
+      inspectionsCursor: inspectionResult.cursor,
+      findingsCursor: findingResult.cursor,
     );
   }
 
@@ -145,10 +134,12 @@ class FirestoreRemoteSyncDataSource implements RemoteSyncDataSource {
     List<String> inspectionGlobalIds,
   ) async {
     final findings = <Map<String, Object?>>[];
-    for (final inspectionId in inspectionGlobalIds) {
-      final snapshot = await _inspectionRef(
-        inspectionId,
-      ).collection('findings').get();
+    for (final chunk in _chunks(inspectionGlobalIds, 10)) {
+      if (chunk.isEmpty) continue;
+      final snapshot = await firestore
+          .collection('findings')
+          .where('inspection_global_id', whereIn: chunk)
+          .get();
       for (final doc in snapshot.docs) {
         final mapped = findingMapper.fromRemote(doc.data());
         if (mapped != null) findings.add(mapped);
@@ -171,10 +162,7 @@ class FirestoreRemoteSyncDataSource implements RemoteSyncDataSource {
 
     final remote = findingMapper.fromLocalPayload(payload);
     batch.set(
-      _findingRef(
-        remote['inspection_global_id'] as String,
-        remote['global_id'] as String,
-      ),
+      _findingRef(remote['global_id'] as String),
       remote,
       SetOptions(merge: operation.operation != SyncOperationType.create),
     );
@@ -184,16 +172,75 @@ class FirestoreRemoteSyncDataSource implements RemoteSyncDataSource {
     return firestore.collection('inspections').doc(globalId);
   }
 
-  DocumentReference<Map<String, dynamic>> _findingRef(
-    String inspectionGlobalId,
-    String findingGlobalId,
-  ) {
-    return _inspectionRef(
-      inspectionGlobalId,
-    ).collection('findings').doc(findingGlobalId);
+  DocumentReference<Map<String, dynamic>> _findingRef(String findingGlobalId) {
+    return firestore.collection('findings').doc(findingGlobalId);
   }
 
   Map<String, Object?> _decode(String payloadJson) {
     return Map<String, Object?>.from(jsonDecode(payloadJson) as Map);
   }
+
+  Future<_CollectionChanges> _fetchCollectionChanges({
+    required String collection,
+    required SyncCursor? cursor,
+    required Map<String, Object?>? Function(Map<String, Object?> data) mapper,
+  }) async {
+    Query<Map<String, dynamic>> query = firestore
+        .collection(collection)
+        .orderBy('updated_at')
+        .orderBy('global_id');
+    if (cursor != null) {
+      query = query.where(
+        'updated_at',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(cursor.updatedAt),
+      );
+    }
+
+    final snapshot = await query.get();
+    final items = <Map<String, Object?>>[];
+    var nextCursor = cursor;
+
+    for (final doc in snapshot.docs) {
+      final mapped = mapper(doc.data());
+      if (mapped == null) continue;
+      final globalId = mapped['global_id'];
+      final updatedAt = mapped['updated_at'];
+      if (globalId is! String || updatedAt is! Timestamp) continue;
+      final updatedDate = updatedAt.toDate();
+      if (cursor != null && !cursor.isBeforeRemote(updatedDate, globalId)) {
+        continue;
+      }
+      items.add(mapped);
+      nextCursor = _maxCursor(
+        nextCursor,
+        SyncCursor(updatedAt: updatedDate, globalId: globalId),
+      );
+    }
+
+    return _CollectionChanges(items: items, cursor: nextCursor);
+  }
+
+  SyncCursor _maxCursor(SyncCursor? current, SyncCursor candidate) {
+    if (current == null ||
+        current.isBeforeRemote(candidate.updatedAt, candidate.globalId)) {
+      return candidate;
+    }
+    return current;
+  }
+
+  Iterable<List<String>> _chunks(List<String> values, int size) sync* {
+    for (var index = 0; index < values.length; index += size) {
+      yield values.sublist(
+        index,
+        index + size > values.length ? values.length : index + size,
+      );
+    }
+  }
+}
+
+class _CollectionChanges {
+  final List<Map<String, Object?>> items;
+  final SyncCursor? cursor;
+
+  const _CollectionChanges({required this.items, required this.cursor});
 }

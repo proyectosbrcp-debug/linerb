@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
 import 'package:sqflite/sqflite.dart';
 
@@ -6,6 +8,9 @@ import '../storage/local/linerb_database.dart';
 
 class RemoteSyncApplier {
   static const String cursorKey = 'remote_sync_cursor';
+  static const String inspectionsCursorKey = 'remote_sync_cursor_inspections';
+  static const String findingsCursorKey = 'remote_sync_cursor_findings';
+  static const Duration clockSkewTolerance = Duration(minutes: 5);
 
   final LinerbDatabase database;
 
@@ -20,15 +25,37 @@ class RemoteSyncApplier {
       for (final finding in changeSet.findings) {
         await _upsertFinding(txn, finding);
       }
-      final cursor = changeSet.cursor;
-      if (cursor != null) {
-        await txn.insert('migration_metadata', {
-          'key': cursorKey,
-          'value': cursor.toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
+      await _saveCursor(txn, inspectionsCursorKey, changeSet.inspectionsCursor);
+      await _saveCursor(txn, findingsCursorKey, changeSet.findingsCursor);
+      await _saveLegacyCursor(txn, changeSet.cursor);
     });
+  }
+
+  Future<RemoteSyncCursors> loadCursors() async {
+    return RemoteSyncCursors(
+      inspections: await loadCursorFor(SyncEntityType.inspection),
+      findings: await loadCursorFor(SyncEntityType.finding),
+    );
+  }
+
+  Future<SyncCursor?> loadCursorFor(SyncEntityType entityType) async {
+    final db = await database.open();
+    final rows = await db.query(
+      'migration_metadata',
+      where: 'key = ?',
+      whereArgs: [_cursorKeyFor(entityType)],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final value = rows.single['value'];
+    if (value is! String) return null;
+    try {
+      return SyncCursor.fromJson(
+        Map<String, Object?>.from(jsonDecode(value) as Map),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<DateTime?> loadCursor() async {
@@ -56,18 +83,13 @@ class RemoteSyncApplier {
       whereArgs: [globalId],
       limit: 1,
     );
-    if (existing.isNotEmpty &&
-        _hasLocalPendingConflict(existing.single, remote)) {
-      await txn.update(
-        'inspections',
-        {
-          'sync_status': syncStatusToStorage(SyncStatus.conflict),
-          'diagnostic_notes': remote.toString(),
-        },
-        where: 'global_id = ?',
-        whereArgs: [globalId],
-      );
-      return;
+    if (existing.isNotEmpty) {
+      final decision = _resolveLastWriteWins(existing.single, remote);
+      if (decision == _RemoteApplyDecision.keepLocal) return;
+      if (decision == _RemoteApplyDecision.conflict) {
+        await _markConflict(txn, 'inspections', globalId, remote);
+        return;
+      }
     }
 
     final row = {
@@ -123,18 +145,13 @@ class RemoteSyncApplier {
       whereArgs: [globalId],
       limit: 1,
     );
-    if (existing.isNotEmpty &&
-        _hasLocalPendingConflict(existing.single, remote)) {
-      await txn.update(
-        'hallazgos',
-        {
-          'sync_status': syncStatusToStorage(SyncStatus.conflict),
-          'diagnostic_notes': remote.toString(),
-        },
-        where: 'global_id = ?',
-        whereArgs: [globalId],
-      );
-      return;
+    if (existing.isNotEmpty) {
+      final decision = _resolveLastWriteWins(existing.single, remote);
+      if (decision == _RemoteApplyDecision.keepLocal) return;
+      if (decision == _RemoteApplyDecision.conflict) {
+        await _markConflict(txn, 'hallazgos', globalId, remote);
+        return;
+      }
     }
 
     await txn.insert('hallazgos', {
@@ -165,22 +182,50 @@ class RemoteSyncApplier {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  bool _hasLocalPendingConflict(
+  _RemoteApplyDecision _resolveLastWriteWins(
     Map<String, Object?> local,
     Map<String, Object?> remote,
   ) {
     final status = local['sync_status'] as String?;
-    final remoteVersion = remote['remote_version'];
-    final localRemoteVersion = local['remote_version'];
     final hasPending =
         status == syncStatusToStorage(SyncStatus.pendingCreate) ||
         status == syncStatusToStorage(SyncStatus.pendingUpdate) ||
         status == syncStatusToStorage(SyncStatus.pendingDelete);
+    if (!hasPending) return _RemoteApplyDecision.applyRemote;
 
-    return hasPending &&
-        remoteVersion is int &&
-        localRemoteVersion is int &&
-        remoteVersion > localRemoteVersion;
+    final localUpdatedAt = _parseLocalDate(local['updated_at']);
+    final remoteUpdatedAt = _parseRemoteDate(remote['updated_at']);
+    if (localUpdatedAt == null || remoteUpdatedAt == null) {
+      return _RemoteApplyDecision.conflict;
+    }
+
+    final difference = localUpdatedAt.difference(remoteUpdatedAt).abs();
+    if (difference > clockSkewTolerance) {
+      return localUpdatedAt.isAfter(remoteUpdatedAt)
+          ? _RemoteApplyDecision.keepLocal
+          : _RemoteApplyDecision.applyRemote;
+    }
+
+    final remoteVersion = remote['remote_version'];
+    final localRemoteVersion = local['remote_version'];
+    if (remoteVersion is int && localRemoteVersion is int) {
+      if (remoteVersion > localRemoteVersion) {
+        return _RemoteApplyDecision.applyRemote;
+      }
+      if (remoteVersion < localRemoteVersion) {
+        return _RemoteApplyDecision.keepLocal;
+      }
+    }
+
+    final remoteGlobalId = remote['global_id'];
+    final localGlobalId = local['global_id'];
+    if (remoteGlobalId is String && localGlobalId is String) {
+      return remoteGlobalId.compareTo(localGlobalId) >= 0
+          ? _RemoteApplyDecision.applyRemote
+          : _RemoteApplyDecision.keepLocal;
+    }
+
+    return _RemoteApplyDecision.conflict;
   }
 
   String _dateString(Object? value) {
@@ -190,8 +235,78 @@ class RemoteSyncApplier {
     return DateTime.fromMillisecondsSinceEpoch(0).toIso8601String();
   }
 
+  DateTime? _parseRemoteDate(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String && value.isNotEmpty) return DateTime.tryParse(value);
+    return null;
+  }
+
+  DateTime? _parseLocalDate(Object? value) {
+    if (value is String && value.isNotEmpty) return DateTime.tryParse(value);
+    if (value is DateTime) return value;
+    return null;
+  }
+
   String? _nullableDateString(Object? value) {
     if (value == null) return null;
     return _dateString(value);
   }
+
+  Future<void> _saveCursor(
+    Transaction txn,
+    String key,
+    SyncCursor? cursor,
+  ) async {
+    if (cursor == null) return;
+    await txn.insert('migration_metadata', {
+      'key': key,
+      'value': jsonEncode(cursor.toJson()),
+      'updated_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> _saveLegacyCursor(Transaction txn, DateTime? cursor) async {
+    if (cursor == null) return;
+    await txn.insert('migration_metadata', {
+      'key': cursorKey,
+      'value': cursor.toIso8601String(),
+      'updated_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  String _cursorKeyFor(SyncEntityType entityType) {
+    return switch (entityType) {
+      SyncEntityType.inspection => inspectionsCursorKey,
+      SyncEntityType.finding => findingsCursorKey,
+    };
+  }
+
+  Future<void> _markConflict(
+    Transaction txn,
+    String table,
+    String globalId,
+    Map<String, Object?> remote,
+  ) async {
+    await txn.update(
+      table,
+      {
+        'sync_status': syncStatusToStorage(SyncStatus.conflict),
+        'diagnostic_notes': _safeRemoteEvidence(remote),
+      },
+      where: 'global_id = ?',
+      whereArgs: [globalId],
+    );
+  }
+
+  String _safeRemoteEvidence(Map<String, Object?> remote) {
+    return jsonEncode({
+      'global_id': remote['global_id'],
+      'updated_at': _dateString(remote['updated_at']),
+      'remote_version': remote['remote_version'],
+      'deleted_at': _nullableDateString(remote['deleted_at']),
+    });
+  }
 }
+
+enum _RemoteApplyDecision { applyRemote, keepLocal, conflict }

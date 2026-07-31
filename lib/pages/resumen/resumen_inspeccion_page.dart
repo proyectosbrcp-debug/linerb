@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
@@ -215,6 +217,10 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
                 );
 
                 await registroController.borrarBorrador();
+                unawaited(
+                  AppDependencies.automaticSyncCoordinator
+                      .notifyInspectionFinalized(),
+                );
 
                 if (!context.mounted) return;
 

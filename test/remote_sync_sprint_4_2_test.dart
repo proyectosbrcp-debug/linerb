@@ -205,35 +205,33 @@ void main() {
     expect(await applier.loadCursor(), DateTime(2026, 5, 1, 11));
   });
 
-  test(
-    'conflicto de versiones marca conflict y conserva copia local',
-    () async {
-      await localStorage.agregarInspeccionCompleta(_inspection(), const []);
-      final applier = RemoteSyncApplier(database: database);
-      final db = await database.open();
-      final local = (await db.query('inspections')).single;
-      final globalId = local['global_id'] as String;
+  test('Last Write Wins aplica remoto con versiÃ³n superior', () async {
+    await localStorage.agregarInspeccionCompleta(_inspection(), const []);
+    final applier = RemoteSyncApplier(database: database);
+    final db = await database.open();
+    final local = (await db.query('inspections')).single;
+    final globalId = local['global_id'] as String;
 
-      await applier.apply(
-        RemoteChangeSet(
-          inspections: [
-            {
-              ..._remoteInspection(),
-              'global_id': globalId,
-              'remote_version': 5,
-              'responsable': 'Remoto',
-            },
-          ],
-          findings: const [],
-          cursor: DateTime(2026, 5, 1, 11),
-        ),
-      );
+    await applier.apply(
+      RemoteChangeSet(
+        inspections: [
+          {
+            ..._remoteInspection(),
+            'global_id': globalId,
+            'updated_at': Timestamp.fromDate(DateTime(2026, 5, 1, 10)),
+            'remote_version': 5,
+            'responsable': 'Remoto',
+          },
+        ],
+        findings: const [],
+        cursor: DateTime(2026, 5, 1, 11),
+      ),
+    );
 
-      final row = (await db.query('inspections')).single;
-      expect(row['sync_status'], syncStatusToStorage(SyncStatus.conflict));
-      expect(row['responsable'], 'Operador');
-    },
-  );
+    final row = (await db.query('inspections')).single;
+    expect(row['sync_status'], syncStatusToStorage(SyncStatus.synced));
+    expect(row['responsable'], 'Remoto');
+  });
 
   test('datos remotos incompletos se toleran sin derribar', () {
     const mapper = InspectionRemoteMapper();
@@ -467,7 +465,10 @@ class _FakeRemoteSyncDataSource implements RemoteSyncDataSource {
   }
 
   @override
-  Future<RemoteChangeSet> fetchChanges({DateTime? since}) async {
+  Future<RemoteChangeSet> fetchChanges({
+    DateTime? since,
+    RemoteSyncCursors? cursors,
+  }) async {
     return RemoteChangeSet(
       inspections: [_remoteInspection()],
       findings: [_remoteFinding()],

@@ -1,77 +1,94 @@
 # Protocolo local de sincronización
 
-## Entidades sincronizables futuras
+## Fuente operativa
 
-Solo datos estructurados:
+SQLite es la única base operativa. La UI, historial, avance y dashboard leen datos locales. Firestore solo intercambia datos estructurados remotos.
 
-- inspecciones;
-- hallazgos;
-- responsables;
-- tipo y nombre de línea;
-- estado de línea;
-- fechas y horas;
-- coordenadas;
-- observaciones;
-- estados de sincronización;
-- versiones;
-- indicadores derivados.
+## Entidades sincronizadas
 
-## Entidades del Sprint 4.1
+- `inspection`
+- `finding`
 
-El modelo común se define únicamente para:
+No se sincronizan fotografías, rutas locales, PDF, mapas ni borradores.
 
-- `inspection`;
-- `finding`.
+## Cola persistente
 
-## Estados tipados
+La tabla `sync_queue` guarda:
 
-- `pendingCreate`;
-- `pendingUpdate`;
-- `pendingDelete`;
-- `synced`;
-- `conflict`;
-- `failed`.
+- entidad;
+- ID local/global;
+- operación;
+- payload estructurado;
+- intentos;
+- próximo reintento;
+- último error resumido;
+- marca de conflicto.
 
-## Operaciones de cola
+## Operaciones
 
-- `create`;
-- `update`;
-- `delete`.
+- `create`
+- `update`
+- `delete`
 
 ## Compactación
 
-Reglas mínimas:
-
-- `create + update` => `create` con payload estructurado más reciente.
-- `update + update` => un solo `update`.
-- `create + delete` antes de sincronizar => se elimina la operación remota pendiente.
+- `create + update` => `create` con payload más reciente.
+- `update + update` => un solo `update` con payload más reciente.
+- `create + delete` => se elimina la operación pendiente.
 - `update + delete` => `delete`.
 - operaciones en conflicto no se compactan.
 
-## Payload remoto futuro
+## Pull incremental
 
-El payload contiene datos estructurados y metadatos de sincronización.
+El pull no descarga toda la colección después de tener cursor.
 
-Quedan excluidos expresamente:
+Cada colección usa un cursor independiente:
 
-- archivos de fotografía;
-- bytes de imagen;
-- base64;
-- rutas locales de fotografías;
-- PDF generado;
-- archivos adjuntos locales.
+- `remote_sync_cursor_inspections`
+- `remote_sync_cursor_findings`
 
-## Device ID
+Cada cursor contiene:
 
-`DeviceIdentityService` genera un identificador estable por instalación y lo guarda localmente.
+- `updated_at`
+- `global_id`
 
-No usa:
+La siguiente consulta descarga únicamente documentos donde:
 
-- IMEI;
-- número telefónico;
-- correo;
-- identificadores personales sensibles.
+```text
+updated_at > cursor.updated_at
+```
 
-## Estado actual
+o:
 
-La cola queda lista para un backend futuro, pero este sprint no envía datos a internet.
+```text
+updated_at == cursor.updated_at
+and global_id > cursor.global_id
+```
+
+Esto permite avance determinista cuando varios documentos comparten el mismo timestamp.
+
+## Last Write Wins
+
+Al aplicar datos remotos sobre una fila local pendiente:
+
+1. Si la diferencia entre timestamps supera la tolerancia de clock skew, gana el timestamp más reciente.
+2. Si la diferencia está dentro de la tolerancia, decide `remote_version`.
+3. Si versiones empatan, decide `global_id` de forma determinista.
+4. Si no hay datos suficientes, se marca conflicto sin borrar evidencia.
+
+## Datos excluidos
+
+Los mappers remotos rechazan campos relacionados con:
+
+- fotos;
+- imágenes;
+- Base64;
+- PDF;
+- archivos;
+- rutas/path/ruta;
+- draft/borrador;
+- mapas.
+
+## Logging
+
+Se registra únicamente información técnica resumida: trigger, inicio, fin, duración, enviados, descargados, aplicados, pendientes y categoría de error. No se registran payloads completos, tokens, API keys, rutas, PDF, fotos ni bytes.

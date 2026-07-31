@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../core/di/app_dependencies.dart';
 import '../../core/logging/app_logger.dart';
 import '../../models/auth_models.dart';
+import '../../models/sync_status_snapshot.dart';
 
 class LoginPage extends StatefulWidget {
   final AuthController controller;
@@ -45,6 +47,10 @@ class _LoginPageState extends State<LoginPage> {
 
     final state = widget.controller.state;
     if (state.status == AuthStatus.authenticated) {
+      await AppDependencies.automaticSyncCoordinator.start(
+        trigger: SyncTrigger.manual,
+      );
+      if (!mounted) return;
       widget.onAuthChanged();
       return;
     }

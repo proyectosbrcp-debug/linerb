@@ -18,7 +18,10 @@ abstract class RemoteSyncDataSource {
 
   Future<void> deleteFinding(Map<String, Object?> payload);
 
-  Future<RemoteChangeSet> fetchChanges({DateTime? since});
+  Future<RemoteChangeSet> fetchChanges({
+    DateTime? since,
+    RemoteSyncCursors? cursors,
+  });
 
   Future<List<Map<String, Object?>>> fetchFindingsForInspections(
     List<String> inspectionGlobalIds,

@@ -7,6 +7,8 @@ import '../../core/domain/line_semaforo.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/dashboard_models.dart';
+import '../../models/sync_status_snapshot.dart';
+import '../../widgets/sync_status_indicator.dart';
 import 'dashboard_findings_detail_page.dart';
 import 'dashboard_priority_detail_page.dart';
 
@@ -95,6 +97,7 @@ class _DashboardPageState extends State<DashboardPage> {
           'Dashboard',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: const [SyncStatusIndicator()],
       ),
       body: FutureBuilder<DashboardSummary>(
         future: _summaryFuture,
@@ -215,6 +218,8 @@ class _DashboardContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const _DashboardSyncSummary(),
+          const SizedBox(height: 12),
           _DashboardFilters(
             filter: filter,
             responsibles: _responsibles(),
@@ -400,6 +405,57 @@ class _DashboardContent extends StatelessWidget {
         summary.lineStatuses.isEmpty &&
         summary.totalInspections == 0 &&
         summary.totalFindings == 0;
+  }
+}
+
+class _DashboardSyncSummary extends StatelessWidget {
+  const _DashboardSyncSummary();
+
+  @override
+  Widget build(BuildContext context) {
+    final coordinator = AppDependencies.automaticSyncCoordinator;
+    return StreamBuilder<SyncStatusSnapshot>(
+      stream: coordinator.stream,
+      initialData: coordinator.snapshot,
+      builder: (context, snapshot) {
+        final status = snapshot.data ?? const SyncStatusSnapshot.initial();
+        final lastUpdate = status.lastSuccessfulSyncAt == null
+            ? 'No disponible'
+            : fechaCorta(status.lastSuccessfulSyncAt!);
+        final warning =
+            status.pendingCount > 0 ||
+            status.failedCount > 0 ||
+            status.conflictCount > 0 ||
+            !status.connectivityAvailable;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Estado de sincronización',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Text(syncStatusLabel(status)),
+                Text('Última actualización: $lastUpdate'),
+                Text('Pendientes: ${status.pendingCount}'),
+                if (warning)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Los datos pueden estar desactualizados.',
+                      style: TextStyle(color: Color(0xFFB71C1C)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

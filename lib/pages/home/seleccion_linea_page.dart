@@ -5,6 +5,7 @@ import '../../controllers/selection_line_controller.dart';
 import '../../core/di/app_dependencies.dart';
 import '../../models/user_profile.dart';
 import '../../services/permission_service.dart';
+import '../../widgets/sync_status_indicator.dart';
 import '../avance/avance_page.dart';
 import '../dashboard/dashboard_page.dart';
 import '../historial/historial_page.dart';
@@ -111,6 +112,7 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
           "Selección de Línea",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: const [SyncStatusIndicator()],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {

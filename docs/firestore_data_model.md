@@ -1,5 +1,7 @@
 # Modelo de datos Firestore
 
+Firestore es un mecanismo remoto de intercambio. No es fuente operativa para la UI.
+
 ## Colección `inspections`
 
 Ruta:
@@ -30,12 +32,12 @@ Campos permitidos:
 - `sync_status`
 - `deleted_at`
 
-## Subcolección `findings`
+## Colección `findings`
 
 Ruta:
 
 ```text
-inspections/{global_id}/findings/{finding_global_id}
+findings/{global_id}
 ```
 
 Campos permitidos:
@@ -56,21 +58,32 @@ Campos permitidos:
 - `remote_version`
 - `deleted_at`
 
+## Regla de consistencia
+
+LINERB no mezcla subcolecciones y colecciones top-level para la misma entidad. Los hallazgos se escriben y leen desde `findings/{global_id}`.
+
+## Cursores
+
+El pull incremental usa cursores separados por colección:
+
+- inspections: `updated_at + global_id`
+- findings: `updated_at + global_id`
+
 ## Campos excluidos
 
 No se permite enviar a Firestore:
 
-- fotografía 1;
-- fotografía 2;
+- fotografías;
 - bytes;
 - Base64;
 - rutas locales;
 - nombres de archivo locales;
 - PDF;
 - rutas del PDF;
+- mapa o imagen de mapa;
 - borrador;
-- diagnósticos internos no necesarios.
+- diagnósticos internos sensibles.
 
-## Fuente del dashboard
+## Fuente del dashboard, historial y avance
 
-El dashboard no consulta Firestore. Sus cálculos siguen alimentándose desde SQLite.
+Dashboard, historial y avance no consultan Firestore. Sus datos salen de SQLite.

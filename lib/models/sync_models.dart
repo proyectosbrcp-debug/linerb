@@ -20,29 +20,74 @@ enum SyncWorkerStatus {
   unavailable,
 }
 
+class SyncCursor {
+  final DateTime updatedAt;
+  final String globalId;
+
+  const SyncCursor({required this.updatedAt, required this.globalId});
+
+  Map<String, Object?> toJson() {
+    return {'updated_at': updatedAt.toIso8601String(), 'global_id': globalId};
+  }
+
+  static SyncCursor? fromJson(Map<String, Object?> json) {
+    final updatedAt = json['updated_at'];
+    final globalId = json['global_id'];
+    if (updatedAt is! String || globalId is! String || globalId.isEmpty) {
+      return null;
+    }
+    final parsed = DateTime.tryParse(updatedAt);
+    if (parsed == null) return null;
+    return SyncCursor(updatedAt: parsed, globalId: globalId);
+  }
+
+  bool isBeforeRemote(DateTime remoteUpdatedAt, String remoteGlobalId) {
+    if (remoteUpdatedAt.isAfter(updatedAt)) return true;
+    if (remoteUpdatedAt.isBefore(updatedAt)) return false;
+    return remoteGlobalId.compareTo(globalId) > 0;
+  }
+}
+
+class RemoteSyncCursors {
+  final SyncCursor? inspections;
+  final SyncCursor? findings;
+
+  const RemoteSyncCursors({this.inspections, this.findings});
+}
+
 class RemoteChangeSet {
   final List<Map<String, Object?>> inspections;
   final List<Map<String, Object?>> findings;
   final DateTime? cursor;
+  final SyncCursor? inspectionsCursor;
+  final SyncCursor? findingsCursor;
 
   const RemoteChangeSet({
     required this.inspections,
     required this.findings,
     required this.cursor,
+    this.inspectionsCursor,
+    this.findingsCursor,
   });
 }
 
 class SyncWorkerResult {
   final SyncWorkerStatus status;
   final int processed;
+  final int downloaded;
+  final int applied;
   final int failed;
   final int conflicts;
+  final Object? error;
 
   const SyncWorkerResult({
     required this.status,
     required this.processed,
+    this.downloaded = 0,
+    this.applied = 0,
     required this.failed,
     required this.conflicts,
+    this.error,
   });
 }
 

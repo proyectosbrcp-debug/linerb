@@ -44,4 +44,25 @@ class PermissionService {
   bool canManageUsers(UserProfile profile) {
     return profile.active && profile.role == UserRole.administrator;
   }
+
+  bool canPushSync(UserProfile profile) {
+    return switch (profile.role) {
+      UserRole.administrator ||
+      UserRole.supervisor ||
+      UserRole.inspector => profile.active,
+      UserRole.viewer => false,
+    };
+  }
+
+  bool canPullSync(UserProfile profile) {
+    return profile.active;
+  }
+
+  bool canRunManualSync(UserProfile profile) {
+    return profile.active;
+  }
+
+  bool canViewAdministrativeSyncDiagnostics(UserProfile profile) {
+    return profile.active && profile.role == UserRole.administrator;
+  }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../controllers/auth_controller.dart';
 import '../../core/di/app_dependencies.dart';
 import '../../models/auth_models.dart';
+import '../../models/sync_status_snapshot.dart';
 import '../home/seleccion_linea_page.dart';
 import 'login_page.dart';
 
@@ -26,7 +27,11 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _restoreSession() async {
+    await AppDependencies.automaticSyncCoordinator.restore();
     await controller.restoreSession();
+    await AppDependencies.automaticSyncCoordinator.start(
+      trigger: SyncTrigger.authSessionRestored,
+    );
     if (!mounted) return;
     setState(() {});
   }

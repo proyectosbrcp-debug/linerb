@@ -3,6 +3,8 @@ import 'dart:convert';
 import '../core/time/app_clock.dart';
 import '../models/sync_models.dart';
 import '../repositories/sync_repository.dart';
+import 'remote_sync_applier.dart';
+import 'sync_retry_policy.dart';
 import '../storage/sync_metadata_storage.dart';
 import '../storage/sync_queue_storage.dart';
 
@@ -10,18 +12,23 @@ class SyncWorker {
   final SyncQueueStorage queueStorage;
   final SyncMetadataStorage metadataStorage;
   final RemoteSyncDataSource? remoteDataSource;
+  final RemoteSyncApplier? remoteSyncApplier;
   final Clock clock;
-  final Duration retryDelay;
+  final SyncRetryPolicy retryPolicy;
 
-  const SyncWorker({
+  SyncWorker({
     required this.queueStorage,
     required this.metadataStorage,
     required this.remoteDataSource,
+    this.remoteSyncApplier,
     this.clock = const SystemClock(),
-    this.retryDelay = const Duration(minutes: 5),
-  });
+    SyncRetryPolicy? retryPolicy,
+  }) : retryPolicy = retryPolicy ?? SyncRetryPolicy(clock: clock);
 
-  Future<SyncWorkerResult> syncNow() async {
+  Future<SyncWorkerResult> syncNow({
+    bool canPush = true,
+    bool canPull = true,
+  }) async {
     final remote = remoteDataSource;
     if (remote == null) {
       return const SyncWorkerResult(
@@ -33,57 +40,102 @@ class SyncWorker {
     }
 
     final pending = await queueStorage.pendingOperations();
-    if (pending.isEmpty) {
-      return const SyncWorkerResult(
-        status: SyncWorkerStatus.synced,
-        processed: 0,
-        failed: 0,
-        conflicts: 0,
-      );
-    }
-
     var processed = 0;
     var failed = 0;
     var conflicts = 0;
     final failedInspections = <String>{};
 
-    for (var index = 0; index < pending.length; index++) {
-      final operation = pending[index];
-      if (operation.isConflict) {
-        conflicts++;
-        continue;
-      }
-      if (operation.entityType == SyncEntityType.finding &&
-          failedInspections.contains(_inspectionId(operation))) {
-        continue;
-      }
+    if (canPush) {
+      final now = clock.now();
+      final eligible = pending
+          .where(
+            (operation) =>
+                operation.nextAttemptAt == null ||
+                !operation.nextAttemptAt!.isAfter(now),
+          )
+          .toList();
+      for (var index = 0; index < eligible.length; index++) {
+        final operation = eligible[index];
+        if (operation.isConflict) {
+          conflicts++;
+          continue;
+        }
+        if (operation.entityType == SyncEntityType.finding &&
+            failedInspections.contains(_inspectionId(operation))) {
+          continue;
+        }
 
-      try {
-        final batch = _batchForInspectionCreate(operation, pending, index);
-        if (batch.length > 1) {
-          await remote.pushBatch(batch);
-          for (final item in batch) {
-            await _markOperationSynced(item);
+        try {
+          final batch = _batchForInspectionCreate(operation, eligible, index);
+          if (batch.length > 1) {
+            await remote.pushBatch(batch);
+            for (final item in batch) {
+              await _markOperationSynced(item);
+              processed++;
+            }
+            index += batch.length - 1;
+          } else {
+            await remote.push(operation);
+            await _markOperationSynced(operation);
             processed++;
           }
-          index += batch.length - 1;
-        } else {
-          await remote.push(operation);
-          await _markOperationSynced(operation);
-          processed++;
+        } catch (error) {
+          failed++;
+          if (operation.entityType == SyncEntityType.inspection) {
+            failedInspections.add(operation.entityId);
+          }
+          final nextAttempt = operation.attempts + 1;
+          await queueStorage.incrementAttempts(operation.id);
+          await queueStorage.registerFailure(operation.id, error.toString());
+          await queueStorage.rescheduleRetry(
+            operation.id,
+            retryPolicy.nextRetryAt(nextAttempt),
+          );
         }
+      }
+    } else {
+      conflicts = pending.where((operation) => operation.isConflict).length;
+      failed = pending.where((operation) => operation.lastError != null).length;
+    }
+
+    var downloaded = 0;
+    var applied = 0;
+    if (canPull && remoteSyncApplier != null) {
+      try {
+        final cursors = await remoteSyncApplier!.loadCursors();
+        final changes = await remote.fetchChanges(cursors: cursors);
+        downloaded = changes.inspections.length + changes.findings.length;
+        await remoteSyncApplier!.apply(changes);
+        applied = downloaded;
       } catch (error) {
         failed++;
-        if (operation.entityType == SyncEntityType.inspection) {
-          failedInspections.add(operation.entityId);
-        }
-        await queueStorage.incrementAttempts(operation.id);
-        await queueStorage.registerFailure(operation.id, error.toString());
-        await queueStorage.rescheduleRetry(
-          operation.id,
-          clock.now().add(retryDelay),
+        return SyncWorkerResult(
+          status: processed > 0
+              ? SyncWorkerStatus.partialFailure
+              : SyncWorkerStatus.unavailable,
+          processed: processed,
+          downloaded: downloaded,
+          applied: applied,
+          failed: failed,
+          conflicts: conflicts,
+          error: error,
         );
       }
+    }
+
+    final remaining = await queueStorage.pendingOperations();
+    conflicts = remaining.where((operation) => operation.isConflict).length;
+    failed = remaining.where((operation) => operation.lastError != null).length;
+
+    if (remaining.isEmpty && failed == 0 && conflicts == 0) {
+      return SyncWorkerResult(
+        status: SyncWorkerStatus.synced,
+        processed: processed,
+        downloaded: downloaded,
+        applied: applied,
+        failed: 0,
+        conflicts: 0,
+      );
     }
 
     return SyncWorkerResult(
@@ -93,6 +145,8 @@ class SyncWorker {
           ? SyncWorkerStatus.partialFailure
           : SyncWorkerStatus.synced,
       processed: processed,
+      downloaded: downloaded,
+      applied: applied,
       failed: failed,
       conflicts: conflicts,
     );
