@@ -35,4 +35,6 @@ flutter:
     - assets/logo_linerb.png
     - assets/footer_linerb.png
     - assets/footer_linerb-1.png
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf
     - assets/data/
