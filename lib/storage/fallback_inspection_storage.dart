@@ -41,6 +41,18 @@ class FallbackInspectionStorage implements InspectionStorage {
   }
 
   @override
+  Future<InspectionHistoryPage> cargarHistorialPage({
+    String? cursor,
+    int limit = 30,
+  }) async {
+    if (await _migrationCompleted()) {
+      return localStorage.cargarHistorialPage(cursor: cursor, limit: limit);
+    }
+
+    return legacyStorage.cargarHistorialPage(cursor: cursor, limit: limit);
+  }
+
+  @override
   Future<void> agregarInspeccionHistorial(Inspeccion inspeccion) async {
     if (await _migrationCompleted()) {
       return localStorage.agregarInspeccionHistorial(inspeccion);

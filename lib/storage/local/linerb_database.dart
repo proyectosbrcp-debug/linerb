@@ -2,7 +2,7 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqflite;
 
 class LinerbDatabase {
-  static const int version = 3;
+  static const int version = 4;
   static const String defaultName = 'linerb_v2.db';
 
   final sqflite.DatabaseFactory? factory;
@@ -170,6 +170,10 @@ CREATE TABLE IF NOT EXISTS integrity_issues (
       await _backfillSyncMetadata(db, 'hallazgos');
       await _createIndexes(db);
     }
+
+    if (oldVersion < 4) {
+      await _createIndexes(db);
+    }
   }
 
   Future<void> _addSyncColumnsOnCreate(
@@ -316,13 +320,31 @@ WHERE global_id = ''
       'CREATE INDEX IF NOT EXISTS idx_inspections_fecha_iso ON inspections(fecha_iso)',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_history_cursor ON inspections(fecha_iso DESC, global_id DESC)',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_inspections_invalid ON inspections(is_invalid)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_valid_fecha ON inspections(is_invalid, fecha_iso DESC)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_inspections_sync_status ON inspections(sync_status)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_inspections_global_id ON inspections(global_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_updated_at_global_id ON inspections(updated_at, global_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_responsable ON inspections(responsable)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_tipo_linea ON inspections(tipo_linea)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inspections_deleted_at ON inspections(deleted_at)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_hallazgos_draft_id ON hallazgos(draft_id)',
@@ -340,10 +362,28 @@ WHERE global_id = ''
       'CREATE INDEX IF NOT EXISTS idx_hallazgos_global_id ON hallazgos(global_id)',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_hallazgos_updated_at_global_id ON hallazgos(updated_at, global_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_hallazgos_categoria ON hallazgos(tipo)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_hallazgos_valid_inspection ON hallazgos(is_invalid, inspection_id)',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_sync_queue_pending ON sync_queue(entity_type, entity_id)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_sync_queue_next_attempt ON sync_queue(next_attempt_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_due ON sync_queue(next_attempt_at, created_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_created_at ON sync_queue(created_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_attempts ON sync_queue(attempts)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_migration_metadata_value ON migration_metadata(value)',

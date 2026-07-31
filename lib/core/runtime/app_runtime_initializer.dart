@@ -1,4 +1,5 @@
 import '../logging/app_logger.dart';
+import '../performance/performance_monitor.dart';
 
 enum RuntimeInitializationStatus { initializing, ready, degraded }
 
@@ -57,7 +58,15 @@ class AppRuntimeInitializer {
   }
 
   Future<void> _initialize() async {
-    await openDatabase();
-    await migrate();
+    await PerformanceMonitor.measure(
+      'app.open_database',
+      category: 'startup',
+      action: openDatabase,
+    );
+    await PerformanceMonitor.measure(
+      'app.v1_migration',
+      category: 'startup',
+      action: migrate,
+    );
   }
 }

@@ -12,6 +12,11 @@ abstract class InspectionRepository {
 
   Future<List<Inspeccion>> cargarHistorial();
 
+  Future<InspectionHistoryPage> cargarHistorialPage({
+    String? cursor,
+    int limit = 30,
+  });
+
   Future<void> guardarEnHistorial(Inspeccion inspeccion);
 
   Future<void> guardarInspeccionCompleta(
@@ -46,6 +51,22 @@ class CurrentInspectionRepository implements InspectionRepository {
       return await storage.cargarHistorial();
     } on StorageNotFoundException {
       return [];
+    }
+  }
+
+  @override
+  Future<InspectionHistoryPage> cargarHistorialPage({
+    String? cursor,
+    int limit = 30,
+  }) async {
+    try {
+      return await storage.cargarHistorialPage(cursor: cursor, limit: limit);
+    } on StorageNotFoundException {
+      return const InspectionHistoryPage(
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      );
     }
   }
 

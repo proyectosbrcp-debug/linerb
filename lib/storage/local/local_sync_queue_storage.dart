@@ -1,5 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../core/constants/sync_batch_config.dart';
+import '../../core/performance/performance_monitor.dart';
 import '../../core/time/app_clock.dart';
 import '../../core/utils/stable_id.dart';
 import '../../models/sync_models.dart';
@@ -70,6 +72,30 @@ class LocalSyncQueueStorage implements SyncQueueStorage {
     final db = await database.open();
     final rows = await db.query('sync_queue', orderBy: 'created_at ASC');
     return rows.map(_fromRow).toList();
+  }
+
+  @override
+  Future<List<SyncQueueEntry>> pendingOperationsPage({
+    required DateTime now,
+    int limit = SyncBatchConfig.pushBatchSize,
+  }) {
+    return PerformanceMonitor.measure(
+      'sync_queue.load_pending_page',
+      category: 'sqlite',
+      recordCount: limit,
+      action: () async {
+        final db = await database.open();
+        final safeLimit = limit < 1 ? 1 : limit;
+        final rows = await db.query(
+          'sync_queue',
+          where: 'next_attempt_at IS NULL OR next_attempt_at <= ?',
+          whereArgs: [now.toIso8601String()],
+          orderBy: 'created_at ASC',
+          limit: safeLimit,
+        );
+        return rows.map(_fromRow).toList();
+      },
+    );
   }
 
   @override

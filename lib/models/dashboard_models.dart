@@ -242,11 +242,15 @@ class DashboardFindingsDetail {
   final int total;
   final List<FindingCategorySummary> categories;
   final List<DashboardFindingDetailItem> items;
+  final String? nextCursor;
+  final bool hasMore;
 
   const DashboardFindingsDetail({
     required this.total,
     required this.categories,
     required this.items,
+    this.nextCursor,
+    this.hasMore = false,
   });
 }
 

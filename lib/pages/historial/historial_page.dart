@@ -15,22 +15,58 @@ class HistorialPage extends StatefulWidget {
 class _HistorialPageState extends State<HistorialPage> {
   final HistoryController historyController =
       AppDependencies.historyController();
+  final ScrollController _scrollController = ScrollController();
   List<Inspeccion> inspecciones = [];
+  bool _isLoading = true;
+  bool _isLoadingMore = false;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     cargarHistorial();
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> cargarHistorial() async {
-    final datos = await historyController.cargarHistorial();
+    await historyController.cargarPrimeraPagina();
 
     if (!mounted) return;
 
     setState(() {
-      inspecciones = datos;
+      inspecciones = List.of(historyController.inspecciones);
+      _isLoading = false;
+      _isLoadingMore = false;
     });
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || !historyController.hasMore) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    await historyController.cargarSiguientePagina();
+
+    if (!mounted) return;
+
+    setState(() {
+      inspecciones = List.of(historyController.inspecciones);
+      _isLoadingMore = false;
+    });
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.extentAfter < 300) {
+      _loadMore();
+    }
   }
 
   @override
@@ -42,7 +78,7 @@ class _HistorialPageState extends State<HistorialPage> {
         backgroundColor: const Color(0xFF0D47A1),
         foregroundColor: Colors.white,
         title: const Text(
-          "Historial de Líneas",
+          "Historial de LÃ­neas",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
@@ -52,7 +88,7 @@ class _HistorialPageState extends State<HistorialPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              "HISTORIAL DE LÍNEAS INSPECCIONADAS",
+              "HISTORIAL DE LÃNEAS INSPECCIONADAS",
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
@@ -62,11 +98,14 @@ class _HistorialPageState extends State<HistorialPage> {
             ),
             const SizedBox(height: 20),
             Expanded(
-              child: inspecciones.isEmpty
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : inspecciones.isEmpty
                   ? const Center(
-                      child: Text("Aún no hay inspecciones registradas"),
+                      child: Text("AÃºn no hay inspecciones registradas"),
                     )
                   : ListView.builder(
+                      controller: _scrollController,
                       itemCount: inspecciones.length,
                       itemBuilder: (context, index) {
                         final item = inspecciones[index];
@@ -83,6 +122,11 @@ class _HistorialPageState extends State<HistorialPage> {
                       },
                     ),
             ),
+            if (_isLoadingMore)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Center(child: CircularProgressIndicator()),
+              ),
           ],
         ),
       ),

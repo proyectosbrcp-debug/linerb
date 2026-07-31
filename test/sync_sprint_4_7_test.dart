@@ -162,7 +162,7 @@ void main() {
         );
         await harness.coordinator.syncNow(trigger: SyncTrigger.periodic);
         await firstCycle;
-        await Future<void>.delayed(const Duration(milliseconds: 90));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
 
         expect(harness.remote.pushCount, 2);
         expect(harness.remote.syncEntrances, 2);
@@ -602,6 +602,20 @@ class _Queue implements SyncQueueStorage {
 
   @override
   Future<List<SyncQueueEntry>> pendingOperations() async => List.of(entries);
+
+  @override
+  Future<List<SyncQueueEntry>> pendingOperationsPage({
+    required DateTime now,
+    int limit = 100,
+  }) async {
+    final eligible = entries
+        .where(
+          (entry) =>
+              entry.nextAttemptAt == null || !entry.nextAttemptAt!.isAfter(now),
+        )
+        .toList();
+    return eligible.take(limit).toList();
+  }
 
   @override
   Future<void> registerFailure(String queueEntryId, String error) async {

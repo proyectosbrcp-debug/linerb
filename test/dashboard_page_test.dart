@@ -200,7 +200,9 @@ void main() {
 
     expect(find.text('Total filtrado: 3'), findsOneWidget);
     expect(find.text('Fuga: 2'), findsOneWidget);
-    expect(find.textContaining('Descripción:'), findsWidgets);
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Descripci'), findsWidgets);
   });
 
   testWidgets('navega desde dashboard al detalle de hallazgos', (tester) async {
@@ -265,14 +267,14 @@ class _FakeCatalogRepository implements CatalogRepository {
   }
 }
 
-class _FakeDashboardRepository implements DashboardRepository {
+class _FakeDashboardRepository extends DashboardRepository {
   final CatalogData? catalog;
   final Future<CatalogData?>? catalogFuture;
   final List<DashboardInspectionRecord>? inspections;
   final List<DashboardFindingRecord>? findings;
   final Object? error;
 
-  const _FakeDashboardRepository({
+  _FakeDashboardRepository({
     this.catalog,
     this.catalogFuture,
     this.inspections,

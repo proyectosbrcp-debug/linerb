@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../core/constants/sync_batch_config.dart';
 import '../core/time/app_clock.dart';
 import '../models/sync_models.dart';
 import '../repositories/sync_repository.dart';
@@ -39,61 +40,68 @@ class SyncWorker {
       );
     }
 
-    final pending = await queueStorage.pendingOperations();
     var processed = 0;
     var failed = 0;
     var conflicts = 0;
     final failedInspections = <String>{};
 
     if (canPush) {
-      final now = clock.now();
-      final eligible = pending
-          .where(
-            (operation) =>
-                operation.nextAttemptAt == null ||
-                !operation.nextAttemptAt!.isAfter(now),
-          )
-          .toList();
-      for (var index = 0; index < eligible.length; index++) {
-        final operation = eligible[index];
-        if (operation.isConflict) {
-          conflicts++;
-          continue;
-        }
-        if (operation.entityType == SyncEntityType.finding &&
-            failedInspections.contains(_inspectionId(operation))) {
-          continue;
-        }
+      while (true) {
+        final eligible = await queueStorage.pendingOperationsPage(
+          now: clock.now(),
+          limit: SyncBatchConfig.pushBatchSize,
+        );
+        if (eligible.isEmpty) break;
 
-        try {
-          final batch = _batchForInspectionCreate(operation, eligible, index);
-          if (batch.length > 1) {
-            await remote.pushBatch(batch);
-            for (final item in batch) {
-              await _markOperationSynced(item);
+        var pageHadActionableOperation = false;
+        for (var index = 0; index < eligible.length; index++) {
+          final operation = eligible[index];
+          if (operation.isConflict) {
+            conflicts++;
+            continue;
+          }
+          if (operation.entityType == SyncEntityType.finding &&
+              failedInspections.contains(_inspectionId(operation))) {
+            continue;
+          }
+
+          pageHadActionableOperation = true;
+          try {
+            final batch = _batchForInspectionCreate(operation, eligible, index);
+            if (batch.length > 1) {
+              await remote.pushBatch(batch);
+              for (final item in batch) {
+                await _markOperationSynced(item);
+                processed++;
+              }
+              index += batch.length - 1;
+            } else {
+              await remote.push(operation);
+              await _markOperationSynced(operation);
               processed++;
             }
-            index += batch.length - 1;
-          } else {
-            await remote.push(operation);
-            await _markOperationSynced(operation);
-            processed++;
+          } catch (error) {
+            failed++;
+            if (operation.entityType == SyncEntityType.inspection) {
+              failedInspections.add(operation.entityId);
+            }
+            final nextAttempt = operation.attempts + 1;
+            await queueStorage.incrementAttempts(operation.id);
+            await queueStorage.registerFailure(operation.id, error.toString());
+            await queueStorage.rescheduleRetry(
+              operation.id,
+              retryPolicy.nextRetryAt(nextAttempt),
+            );
           }
-        } catch (error) {
-          failed++;
-          if (operation.entityType == SyncEntityType.inspection) {
-            failedInspections.add(operation.entityId);
-          }
-          final nextAttempt = operation.attempts + 1;
-          await queueStorage.incrementAttempts(operation.id);
-          await queueStorage.registerFailure(operation.id, error.toString());
-          await queueStorage.rescheduleRetry(
-            operation.id,
-            retryPolicy.nextRetryAt(nextAttempt),
-          );
+        }
+
+        if (!pageHadActionableOperation ||
+            eligible.length < SyncBatchConfig.pushBatchSize) {
+          break;
         }
       }
     } else {
+      final pending = await queueStorage.pendingOperations();
       conflicts = pending.where((operation) => operation.isConflict).length;
       failed = pending.where((operation) => operation.lastError != null).length;
     }
@@ -102,11 +110,23 @@ class SyncWorker {
     var applied = 0;
     if (canPull && remoteSyncApplier != null) {
       try {
-        final cursors = await remoteSyncApplier!.loadCursors();
-        final changes = await remote.fetchChanges(cursors: cursors);
-        downloaded = changes.inspections.length + changes.findings.length;
-        await remoteSyncApplier!.apply(changes);
-        applied = downloaded;
+        for (var page = 0; page < 20; page++) {
+          final cursors = await remoteSyncApplier!.loadCursors();
+          final changes = await remote.fetchChanges(cursors: cursors);
+          final pageDownloaded =
+              changes.inspections.length + changes.findings.length;
+          if (pageDownloaded == 0) break;
+
+          downloaded += pageDownloaded;
+          await remoteSyncApplier!.apply(changes);
+          applied += pageDownloaded;
+
+          final reachedPageLimit =
+              changes.inspections.length >=
+                  SyncBatchConfig.pullInspectionsLimit ||
+              changes.findings.length >= SyncBatchConfig.pullFindingsLimit;
+          if (!reachedPageLimit) break;
+        }
       } catch (error) {
         failed++;
         return SyncWorkerResult(

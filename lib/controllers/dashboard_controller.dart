@@ -1,5 +1,6 @@
 import '../core/domain/line_identity.dart';
 import '../core/domain/line_semaforo.dart';
+import '../core/constants/query_page_config.dart';
 import '../models/dashboard_models.dart';
 import '../repositories/dashboard_repository.dart';
 
@@ -8,8 +9,9 @@ class DashboardController {
   final DateTime Function() clock;
   final LineIdentityNormalizer lineNormalizer;
   final LineSemaforoRule semaforoRule;
+  final Map<String, _DashboardCacheEntry> _summaryCache = {};
 
-  const DashboardController({
+  DashboardController({
     required this.repository,
     required this.clock,
     this.lineNormalizer = const LineIdentityNormalizer(),
@@ -19,6 +21,13 @@ class DashboardController {
   Future<DashboardSummary> loadSummary({
     DashboardFilter filter = const DashboardFilter(),
   }) async {
+    final revision = await repository.loadLocalRevision();
+    final cacheKey = _filterCacheKey(filter);
+    final cached = _summaryCache[cacheKey];
+    if (cached != null && cached.revision == revision) {
+      return cached.summary;
+    }
+
     final catalog = await repository.loadCatalog();
     final catalogLines = lineNormalizer.catalogLines(catalog);
     final inspections = await repository.loadValidInspections();
@@ -47,12 +56,17 @@ class DashboardController {
           _matchesFindingFilters(finding, filter, now);
     }).toList();
 
-    return _buildSummary(
+    final summary = _buildSummary(
       statuses: filteredStatuses,
       inspections: filteredInspections,
       findings: filteredFindings,
       invalidRecordsExcluded: invalidRecordsExcluded,
     );
+    _summaryCache[cacheKey] = _DashboardCacheEntry(
+      revision: revision,
+      summary: summary,
+    );
+    return summary;
   }
 
   Future<List<LineInspectionStatus>> loadPriorityDetails({
@@ -70,11 +84,20 @@ class DashboardController {
 
   Future<DashboardFindingsDetail> loadFindingsDetail({
     DashboardFilter filter = const DashboardFilter(),
+    String? cursor,
+    int? limit,
   }) async {
     final catalog = await repository.loadCatalog();
     final catalogLines = lineNormalizer.catalogLines(catalog);
     final inspections = await repository.loadValidInspections();
-    final findings = await repository.loadValidFindings();
+    final canUsePagedQuery = !filter.isActive && limit != null;
+    final requestedLimit = limit ?? QueryPageConfig.dashboardFindingsPageSize;
+    final findings = canUsePagedQuery
+        ? await repository.loadValidFindingsPage(
+            cursor: cursor,
+            limit: requestedLimit + 1,
+          )
+        : await repository.loadValidFindings();
     final now = clock();
     final statuses = _filterStatuses(
       _lineStatuses(catalogLines, inspections, now),
@@ -85,16 +108,34 @@ class DashboardController {
     final allowedLineKeys = statuses
         .map((status) => status.normalizedKey)
         .toSet();
-    final filteredFindings = findings.where((finding) {
+    final matchingFindings = findings.where((finding) {
       final key = _findingKey(finding);
       return allowedLineKeys.contains(key) &&
           _matchesFindingFilters(finding, filter, now);
     }).toList();
+    final pageItems = canUsePagedQuery
+        ? matchingFindings.take(requestedLimit).toList()
+        : matchingFindings;
+    final hasMore =
+        canUsePagedQuery && matchingFindings.length > requestedLimit;
 
     return DashboardFindingsDetail(
-      total: filteredFindings.length,
-      categories: _findingsByCategory(filteredFindings),
-      items: filteredFindings.map(_findingDetailItem).toList(),
+      total: canUsePagedQuery
+          ? await repository.countValidFindings()
+          : matchingFindings.length,
+      categories: canUsePagedQuery
+          ? (await repository.loadFindingCategoryCounts())
+                .map(
+                  (item) => FindingCategorySummary(
+                    category: item.category,
+                    count: item.count,
+                  ),
+                )
+                .toList()
+          : _findingsByCategory(matchingFindings),
+      items: pageItems.map(_findingDetailItem).toList(),
+      nextCursor: hasMore ? _findingCursor(pageItems.last) : null,
+      hasMore: hasMore,
     );
   }
 
@@ -310,6 +351,11 @@ class DashboardController {
         .normalizedKey;
   }
 
+  String _findingCursor(DashboardFindingRecord finding) {
+    final date = finding.date?.toIso8601String() ?? '';
+    return '$date|${finding.id}';
+  }
+
   DashboardFindingDetailItem _findingDetailItem(
     DashboardFindingRecord finding,
   ) {
@@ -420,4 +466,22 @@ class DashboardController {
   DateTime _monthStart(DateTime value) {
     return DateTime(value.year, value.month);
   }
+
+  String _filterCacheKey(DashboardFilter filter) {
+    return [
+      filter.lineType.name,
+      filter.semaforo.name,
+      filter.responsible?.trim() ?? '',
+      filter.periodType.name,
+      filter.customStart?.toIso8601String() ?? '',
+      filter.customEnd?.toIso8601String() ?? '',
+    ].join('|');
+  }
+}
+
+class _DashboardCacheEntry {
+  final int revision;
+  final DashboardSummary summary;
+
+  const _DashboardCacheEntry({required this.revision, required this.summary});
 }

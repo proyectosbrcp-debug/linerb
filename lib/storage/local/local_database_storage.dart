@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../core/time/app_clock.dart';
 import '../../core/utils/stable_id.dart';
+import '../../core/performance/performance_monitor.dart';
 import '../../models/draft_data.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../models/inspeccion.dart';
@@ -84,6 +85,65 @@ class LocalDatabaseStorage
     } catch (e) {
       throw StorageReadException('No se pudo leer inspecciones locales', e);
     }
+  }
+
+  @override
+  Future<InspectionHistoryPage> cargarHistorialPage({
+    String? cursor,
+    int limit = 30,
+  }) async {
+    return PerformanceMonitor.measure(
+      'history.load_page',
+      category: 'sqlite',
+      recordCount: limit,
+      action: () async {
+        try {
+          final db = await database.open();
+          final safeLimit = limit < 1 ? 1 : limit;
+          final parsedCursor = _HistoryCursor.parse(cursor);
+          final rows = await db.query(
+            'inspections',
+            where: parsedCursor == null
+                ? null
+                : '(fecha_iso < ? OR (fecha_iso = ? AND global_id < ?))',
+            whereArgs: parsedCursor == null
+                ? null
+                : [
+                    parsedCursor.fechaIso,
+                    parsedCursor.fechaIso,
+                    parsedCursor.globalId,
+                  ],
+            orderBy: 'fecha_iso DESC, global_id DESC',
+            limit: safeLimit + 1,
+          );
+
+          if (rows.isEmpty && parsedCursor == null) {
+            throw const StorageNotFoundException(
+              'No existen inspecciones locales',
+            );
+          }
+
+          final pageRows = rows.take(safeLimit).toList();
+          final hasMore = rows.length > safeLimit;
+          final nextCursor = hasMore && pageRows.isNotEmpty
+              ? _HistoryCursor.fromRow(pageRows.last).encode()
+              : null;
+
+          return InspectionHistoryPage(
+            items: pageRows.map(_inspeccionDesdeRow).toList(),
+            nextCursor: nextCursor,
+            hasMore: hasMore,
+          );
+        } on StorageException {
+          rethrow;
+        } catch (e) {
+          throw StorageReadException(
+            'No se pudo leer pagina de historial local',
+            e,
+          );
+        }
+      },
+    );
   }
 
   @override
@@ -568,5 +628,31 @@ WHERE i.linea = ?
           item.puntoReferencia == inspeccion.puntoReferencia &&
           item.observaciones == inspeccion.observaciones;
     });
+  }
+}
+
+class _HistoryCursor {
+  final String fechaIso;
+  final String globalId;
+
+  const _HistoryCursor({required this.fechaIso, required this.globalId});
+
+  String encode() => '$fechaIso|$globalId';
+
+  static _HistoryCursor fromRow(Map<String, Object?> row) {
+    return _HistoryCursor(
+      fechaIso: row['fecha_iso'] as String,
+      globalId: row['global_id'] as String? ?? row['id'] as String,
+    );
+  }
+
+  static _HistoryCursor? parse(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final separator = value.lastIndexOf('|');
+    if (separator <= 0 || separator >= value.length - 1) return null;
+    return _HistoryCursor(
+      fechaIso: value.substring(0, separator),
+      globalId: value.substring(separator + 1),
+    );
   }
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/constants/sync_batch_config.dart';
 import '../../models/sync_models.dart';
 import '../sync_repository.dart';
 import 'finding_remote_mapper.dart';
@@ -185,15 +186,19 @@ class FirestoreRemoteSyncDataSource implements RemoteSyncDataSource {
     required SyncCursor? cursor,
     required Map<String, Object?>? Function(Map<String, Object?> data) mapper,
   }) async {
+    final limit = collection == 'findings'
+        ? SyncBatchConfig.pullFindingsLimit
+        : SyncBatchConfig.pullInspectionsLimit;
     Query<Map<String, dynamic>> query = firestore
         .collection(collection)
         .orderBy('updated_at')
-        .orderBy('global_id');
+        .orderBy('global_id')
+        .limit(limit);
     if (cursor != null) {
-      query = query.where(
-        'updated_at',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(cursor.updatedAt),
-      );
+      query = query.startAfter([
+        Timestamp.fromDate(cursor.updatedAt),
+        cursor.globalId,
+      ]);
     }
 
     final snapshot = await query.get();

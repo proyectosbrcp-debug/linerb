@@ -244,6 +244,25 @@ class FakeInspectionStorage implements InspectionStorage {
   }
 
   @override
+  Future<InspectionHistoryPage> cargarHistorialPage({
+    String? cursor,
+    int limit = 30,
+  }) async {
+    if (loadError != null) throw loadError!;
+    final start = cursor == null ? 0 : int.tryParse(cursor) ?? 0;
+    final end = start + limit > historial.length
+        ? historial.length
+        : start + limit;
+    return InspectionHistoryPage(
+      items: start >= historial.length
+          ? const []
+          : historial.sublist(start, end),
+      nextCursor: end >= historial.length ? null : end.toString(),
+      hasMore: end < historial.length,
+    );
+  }
+
+  @override
   Future<void> agregarInspeccionHistorial(Inspeccion inspeccion) async {
     if (writeError != null) throw writeError!;
     historial.add(inspeccion);

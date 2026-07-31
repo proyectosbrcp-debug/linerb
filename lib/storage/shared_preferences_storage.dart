@@ -78,6 +78,26 @@ class SharedPreferencesStorage
   }
 
   @override
+  Future<InspectionHistoryPage> cargarHistorialPage({
+    String? cursor,
+    int limit = 30,
+  }) async {
+    final all = await cargarHistorial();
+    all.sort((a, b) => b.fecha.compareTo(a.fecha));
+    final start = cursor == null ? 0 : int.tryParse(cursor) ?? 0;
+    final end = start + limit > all.length ? all.length : start + limit;
+    final items = start >= all.length
+        ? <Inspeccion>[]
+        : all.sublist(start, end);
+
+    return InspectionHistoryPage(
+      items: items,
+      nextCursor: end >= all.length ? null : end.toString(),
+      hasMore: end < all.length,
+    );
+  }
+
+  @override
   Future<void> agregarInspeccionHistorial(Inspeccion inspeccion) async {
     try {
       final prefs = await instance();
