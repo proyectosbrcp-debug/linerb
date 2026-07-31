@@ -165,7 +165,7 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
     }
 
     final posicion = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
 
     if (!mounted) return;
@@ -250,7 +250,7 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
             ),
             const SizedBox(height: 18),
             DropdownButtonFormField<String>(
-              value: estadoLinea,
+              initialValue: estadoLinea,
               decoration: const InputDecoration(
                 labelText: "Estado operativo de la línea",
                 border: OutlineInputBorder(),
@@ -284,19 +284,22 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
             ),
             const SizedBox(height: 10),
             Card(
-              child: Column(
-                children: hallazgos.map((item) {
-                  return RadioListTile<String>(
-                    title: Text(item),
-                    value: item,
-                    groupValue: hallazgoSeleccionado,
-                    onChanged: (valor) {
-                      setState(() {
-                        hallazgoSeleccionado = valor!;
-                      });
-                    },
-                  );
-                }).toList(),
+              child: RadioGroup<String>(
+                groupValue: hallazgoSeleccionado,
+                onChanged: (valor) {
+                  if (valor == null) return;
+                  setState(() {
+                    hallazgoSeleccionado = valor;
+                  });
+                },
+                child: Column(
+                  children: hallazgos.map((item) {
+                    return RadioListTile<String>(
+                      title: Text(item),
+                      value: item,
+                    );
+                  }).toList(),
+                ),
               ),
             ),
 
@@ -559,7 +562,8 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
     required Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      value: value,
+      key: ValueKey('$label-$value'),
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),

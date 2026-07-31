@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:linerb/controllers/auth_controller.dart';
@@ -24,7 +25,7 @@ Future<void> main() async {
   await _restauracionYLogout(authRepository, profileRepository, sessionStorage);
   await _fallbackOffline(profileRepository, sessionStorage);
 
-  print('AuthController Emulator checks OK');
+  stdout.writeln('AuthController Emulator checks OK');
 }
 
 Future<void> _loginCorrecto(

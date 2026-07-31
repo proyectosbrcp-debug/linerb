@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/constants/catalog_urls.dart';
+import '../core/logging/app_logger.dart';
 import '../models/catalog_data.dart';
 import '../storage/catalog_cache_storage.dart';
 import '../storage/storage_exceptions.dart';
@@ -22,10 +23,9 @@ class CurrentCatalogRepository implements CatalogRepository {
   @override
   Future<CatalogData?> cargarCatalogos() async {
     try {
-      print("========== CONSULTANDO FIREBASE ==========");
+      AppLogger.info('Consultando catálogos remotos');
 
       final troncalesResponse = await http.get(Uri.parse(troncalesCatalogUrl));
-
       final ramalesResponse = await http.get(Uri.parse(ramalesCatalogUrl));
 
       if (troncalesResponse.statusCode == 200 &&
@@ -35,7 +35,7 @@ class CurrentCatalogRepository implements CatalogRepository {
           ramalesJson: ramalesResponse.body,
         );
 
-        print("✅ JSON FIREBASE CARGADO Y GUARDADO EN CACHE");
+        AppLogger.info('Catálogos remotos cargados y guardados en cache');
 
         return CatalogData(
           troncalesJson: Map<String, dynamic>.from(
@@ -46,28 +46,30 @@ class CurrentCatalogRepository implements CatalogRepository {
           ),
         );
       }
-    } catch (e) {
-      print("⚠ No se pudo cargar desde Firebase");
-      print(e);
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'No se pudo cargar catálogos remotos',
+        error,
+        stackTrace,
+      );
     }
 
     try {
-      print("========== CARGANDO CACHE LOCAL ==========");
+      AppLogger.info('Cargando catálogos desde cache local');
 
       final catalogos = await storage.cargarCatalogosCache();
 
-      print("✅ JSON CARGADO DESDE CACHE LOCAL");
+      AppLogger.info('Catálogos cargados desde cache local');
 
       return catalogos;
     } on StorageNotFoundException {
       // Mantiene el comportamiento previo: si no hay cache, intenta assets.
-    } catch (e) {
-      print("⚠ No se pudo cargar cache local");
-      print(e);
+    } catch (error, stackTrace) {
+      AppLogger.warning('No se pudo cargar cache local', error, stackTrace);
     }
 
     try {
-      print("========== CARGANDO JSON INTERNO ==========");
+      AppLogger.info('Cargando catálogos internos');
 
       final String troncalesData = await rootBundle.loadString(
         'assets/data/troncales.json',
@@ -77,15 +79,14 @@ class CurrentCatalogRepository implements CatalogRepository {
         'assets/data/ramales.json',
       );
 
-      print("✅ JSON INTERNO CARGADO");
+      AppLogger.info('Catálogos internos cargados');
 
       return CatalogData(
         troncalesJson: Map<String, dynamic>.from(json.decode(troncalesData)),
         ramalesJson: List<String>.from(json.decode(ramalesData)['ramales']),
       );
-    } catch (e) {
-      print("❌ ERROR TOTAL CARGANDO JSON");
-      print(e);
+    } catch (error, stackTrace) {
+      AppLogger.error('No se pudo cargar ningún catálogo', error, stackTrace);
     }
 
     return null;

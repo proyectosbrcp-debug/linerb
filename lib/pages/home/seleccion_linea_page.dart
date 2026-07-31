@@ -139,7 +139,7 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
                       ),
                       const SizedBox(height: 25),
                       DropdownButtonFormField<String>(
-                        value: tipoLinea,
+                        initialValue: tipoLinea,
                         decoration: const InputDecoration(
                           labelText: "Tipo de línea",
                           border: OutlineInputBorder(),
@@ -170,7 +170,8 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
                       const SizedBox(height: 15),
                       if (esTroncal) ...[
                         DropdownButtonFormField<String>(
-                          value: troncalSeleccionada,
+                          key: ValueKey('troncal-$troncalSeleccionada'),
+                          initialValue: troncalSeleccionada,
                           decoration: const InputDecoration(
                             labelText: "Troncal",
                             border: OutlineInputBorder(),
@@ -193,7 +194,10 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
                         ),
                         const SizedBox(height: 15),
                         DropdownButtonFormField<String>(
-                          value: subtroncalSeleccionada,
+                          key: ValueKey(
+                            'subtroncal-$troncalSeleccionada-$subtroncalSeleccionada',
+                          ),
+                          initialValue: subtroncalSeleccionada,
                           decoration: const InputDecoration(
                             labelText: "Subtroncal",
                             border: OutlineInputBorder(),
@@ -216,7 +220,8 @@ class _SeleccionLineaPageState extends State<SeleccionLineaPage> {
                         ),
                       ] else ...[
                         DropdownButtonFormField<String>(
-                          value: ramalSeleccionado,
+                          key: ValueKey('ramal-$ramalSeleccionado'),
+                          initialValue: ramalSeleccionado,
                           decoration: const InputDecoration(
                             labelText: "Ramal",
                             border: OutlineInputBorder(),
