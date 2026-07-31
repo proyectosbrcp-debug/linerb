@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/di/app_dependencies.dart';
+import '../../core/theme/ui_constants.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/sync_status_snapshot.dart';
 import '../../models/user_profile.dart';
@@ -41,7 +42,10 @@ class SyncStatusPage extends StatelessWidget {
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.cloud_sync),
-                  title: Text(syncStatusLabel(status)),
+                  title: Semantics(
+                    liveRegion: true,
+                    child: Text(syncStatusLabel(status)),
+                  ),
                   subtitle: Text(_friendlyStatusText(status)),
                 ),
               ),
@@ -128,13 +132,20 @@ class SyncStatusPage extends StatelessWidget {
                 onPressed:
                     status.authenticated &&
                         status.profileActive &&
-                        status.canPull
+                        status.canPull &&
+                        status.phase != SyncPhase.syncing
                     ? () {
                         syncCoordinator.syncNow(trigger: SyncTrigger.manual);
                       }
                     : null,
                 icon: const Icon(Icons.sync),
                 label: const Text('Sincronizar ahora'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(
+                    double.infinity,
+                    LinerbTouchTarget.primaryButtonHeight,
+                  ),
+                ),
               ),
             ],
           );

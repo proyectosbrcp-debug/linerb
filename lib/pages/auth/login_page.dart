@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../controllers/auth_controller.dart';
 import '../../core/di/app_dependencies.dart';
 import '../../core/logging/app_logger.dart';
+import '../../core/theme/ui_constants.dart';
 import '../../models/auth_models.dart';
 import '../../models/sync_status_snapshot.dart';
 
@@ -24,9 +25,11 @@ class _LoginPageState extends State<LoginPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   bool obscurePassword = true;
+  bool _isSubmitting = false;
   String? message;
 
-  bool get isLoading => widget.controller.state.status == AuthStatus.loading;
+  bool get isLoading =>
+      _isSubmitting || widget.controller.state.status == AuthStatus.loading;
 
   @override
   void dispose() {
@@ -36,46 +39,72 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _login() async {
+    if (_isSubmitting) return;
     setState(() {
+      _isSubmitting = true;
       message = null;
     });
-    await widget.controller.signIn(
-      email: emailController.text,
-      password: passwordController.text,
-    );
-    if (!mounted) return;
 
-    final state = widget.controller.state;
-    if (state.status == AuthStatus.authenticated) {
-      await AppDependencies.automaticSyncCoordinator.start(
-        trigger: SyncTrigger.manual,
+    try {
+      await widget.controller.signIn(
+        email: emailController.text,
+        password: passwordController.text,
       );
       if (!mounted) return;
-      widget.onAuthChanged();
-      return;
+
+      final state = widget.controller.state;
+      if (state.status == AuthStatus.authenticated) {
+        await AppDependencies.automaticSyncCoordinator.start(
+          trigger: SyncTrigger.manual,
+        );
+        if (!mounted) return;
+        widget.onAuthChanged();
+        return;
+      }
+      AppLogger.warning('Intento de inicio de sesión no completado');
+      if (!mounted) return;
+      setState(() {
+        message = state.message ?? AuthController.genericErrorMessage;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
-    AppLogger.warning('Intento de inicio de sesión no completado');
-    setState(() {
-      message = state.message ?? AuthController.genericErrorMessage;
-    });
   }
 
   Future<void> _resetPassword() async {
-    await widget.controller.sendPasswordResetEmail(emailController.text);
-    if (!mounted) return;
+    if (_isSubmitting) return;
     setState(() {
-      message =
-          'Si el correo está registrado, recibirá instrucciones de recuperación.';
+      _isSubmitting = true;
+      message = null;
     });
+
+    try {
+      await widget.controller.sendPasswordResetEmail(emailController.text);
+      if (!mounted) return;
+      setState(() {
+        message =
+            'Si el correo está registrado, recibirá instrucciones de recuperación.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FA),
+      backgroundColor: LinerbColors.background,
       appBar: AppBar(
         centerTitle: true,
-        backgroundColor: const Color(0xFF0D47A1),
+        backgroundColor: LinerbColors.primaryBlue,
         foregroundColor: Colors.white,
         title: const Text(
           'LINERB',
@@ -84,80 +113,105 @@ class _LoginPageState extends State<LoginPage> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 20),
-              const Icon(Icons.hub, size: 90, color: Color(0xFF0D47A1)),
-              const SizedBox(height: 15),
-              const Text(
-                'Sistema de Inspección de Líneas',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 30),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Correo',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.email),
+          child: AutofillGroup(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 20),
+                const Icon(
+                  Icons.hub,
+                  size: 90,
+                  color: LinerbColors.primaryBlue,
                 ),
-                enabled: !isLoading,
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: passwordController,
-                obscureText: obscurePassword,
-                decoration: InputDecoration(
-                  labelText: 'Contraseña',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    onPressed: isLoading
-                        ? null
-                        : () {
-                            setState(() {
-                              obscurePassword = !obscurePassword;
-                            });
-                          },
-                    icon: Icon(
-                      obscurePassword ? Icons.visibility : Icons.visibility_off,
+                const SizedBox(height: 15),
+                const Text(
+                  'Sistema de Inspección de Líneas',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 30),
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.email],
+                  decoration: const InputDecoration(
+                    labelText: 'Correo',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.email),
+                  ),
+                  enabled: !isLoading,
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: passwordController,
+                  obscureText: obscurePassword,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.password],
+                  onSubmitted: (_) {
+                    if (!isLoading) _login();
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Contraseña',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.lock),
+                    suffixIcon: IconButton(
+                      tooltip: obscurePassword
+                          ? 'Mostrar contraseña'
+                          : 'Ocultar contraseña',
+                      onPressed: isLoading
+                          ? null
+                          : () {
+                              setState(() {
+                                obscurePassword = !obscurePassword;
+                              });
+                            },
+                      icon: Icon(
+                        obscurePassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                    ),
+                  ),
+                  enabled: !isLoading,
+                ),
+                const SizedBox(height: 15),
+                if (message != null)
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      message!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: LinerbColors.danger),
+                    ),
+                  ),
+                const SizedBox(height: 15),
+                ElevatedButton.icon(
+                  onPressed: isLoading ? null : _login,
+                  icon: isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.login),
+                  label: const Text('INICIAR SESIÓN'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(
+                      double.infinity,
+                      LinerbTouchTarget.primaryButtonHeight,
                     ),
                   ),
                 ),
-                enabled: !isLoading,
-              ),
-              const SizedBox(height: 15),
-              if (message != null)
-                Text(
-                  message!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFFB71C1C)),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: isLoading ? null : _resetPassword,
+                  child: const Text('Recuperar contraseña'),
                 ),
-              const SizedBox(height: 15),
-              ElevatedButton.icon(
-                onPressed: isLoading ? null : _login,
-                icon: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.login),
-                label: const Text('INICIAR SESIÓN'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 55),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: isLoading ? null : _resetPassword,
-                child: const Text('Recuperar contraseña'),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

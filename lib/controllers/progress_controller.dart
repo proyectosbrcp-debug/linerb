@@ -20,15 +20,15 @@ class ProgressController {
     final result = semaforoRule.evaluate(fecha, clock());
 
     if (result.daysSinceInspection == null) {
-      return "ðŸ”´ Nunca inspeccionada";
+      return "🔴 Nunca inspeccionada";
     }
 
     final dias = result.daysSinceInspection!;
 
     return switch (result.status) {
-      LineSemaforoStatus.verde => "ðŸŸ¢ $dias dÃ­as",
-      LineSemaforoStatus.amarillo => "ðŸŸ¡ $dias dÃ­as",
-      LineSemaforoStatus.rojo => "ðŸ”´ $dias dÃ­as",
+      LineSemaforoStatus.verde => "🟢 $dias días",
+      LineSemaforoStatus.amarillo => "🟡 $dias días",
+      LineSemaforoStatus.rojo => "🔴 $dias días",
     };
   }
 }

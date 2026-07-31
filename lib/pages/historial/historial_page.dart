@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../controllers/history_controller.dart';
 import '../../core/di/app_dependencies.dart';
+import '../../core/theme/ui_constants.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/inspeccion.dart';
+import '../../widgets/linerb_empty_state.dart';
+import '../../widgets/linerb_loading_state.dart';
 
 class HistorialPage extends StatefulWidget {
   const HistorialPage({super.key});
@@ -72,13 +75,13 @@ class _HistorialPageState extends State<HistorialPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FA),
+      backgroundColor: LinerbColors.background,
       appBar: AppBar(
         centerTitle: true,
-        backgroundColor: const Color(0xFF0D47A1),
+        backgroundColor: LinerbColors.primaryBlue,
         foregroundColor: Colors.white,
         title: const Text(
-          "Historial de LÃ­neas",
+          "Historial de Líneas",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
@@ -88,21 +91,22 @@ class _HistorialPageState extends State<HistorialPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              "HISTORIAL DE LÃNEAS INSPECCIONADAS",
+              "HISTORIAL DE LÍNEAS INSPECCIONADAS",
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0D47A1),
-              ),
+              style: LinerbTextStyles.screenTitle,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: LinerbSpacing.xl),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const LinerbLoadingState(
+                      message: 'Cargando historial de inspecciones...',
+                    )
                   : inspecciones.isEmpty
-                  ? const Center(
-                      child: Text("AÃºn no hay inspecciones registradas"),
+                  ? const LinerbEmptyState(
+                      icon: Icons.history,
+                      title: 'Sin inspecciones registradas',
+                      message:
+                          'Cuando finalice una inspección aparecerá en este historial.',
                     )
                   : ListView.builder(
                       controller: _scrollController,
@@ -124,7 +128,7 @@ class _HistorialPageState extends State<HistorialPage> {
             ),
             if (_isLoadingMore)
               const Padding(
-                padding: EdgeInsets.only(top: 8),
+                padding: EdgeInsets.only(top: LinerbSpacing.sm),
                 child: Center(child: CircularProgressIndicator()),
               ),
           ],

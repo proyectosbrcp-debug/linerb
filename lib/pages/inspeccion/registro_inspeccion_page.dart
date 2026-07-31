@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../controllers/inspection_registration_controller.dart';
 import '../../core/di/app_dependencies.dart';
+import '../../core/theme/ui_constants.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../models/inspection_local_photos.dart';
@@ -42,6 +43,8 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
   final List<HallazgoInspeccion> hallazgosRegistrados = [];
   File? foto1;
   File? foto2;
+  bool _addingFinding = false;
+  bool _finalizing = false;
 
   final LocalPhotoService photoService = AppDependencies.localPhotoService;
 
@@ -382,7 +385,10 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
               icon: const Icon(Icons.gps_fixed),
               label: const Text("OBTENER COORDENADAS"),
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(
+                  double.infinity,
+                  LinerbTouchTarget.secondaryButtonHeight,
+                ),
               ),
             ),
 
@@ -414,7 +420,10 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
               icon: const Icon(Icons.camera_alt),
               label: Text(foto1 == null ? "TOMAR FOTO 1" : "FOTO 1 CAPTURADA"),
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(
+                  double.infinity,
+                  LinerbTouchTarget.secondaryButtonHeight,
+                ),
               ),
             ),
 
@@ -425,7 +434,10 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
               icon: const Icon(Icons.camera_alt),
               label: Text(foto2 == null ? "TOMAR FOTO 2" : "FOTO 2 CAPTURADA"),
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(
+                  double.infinity,
+                  LinerbTouchTarget.secondaryButtonHeight,
+                ),
               ),
             ),
             const SizedBox(height: 22),
@@ -441,111 +453,150 @@ class _RegistroInspeccionPageState extends State<RegistroInspeccionPage> {
             ),
             const SizedBox(height: 22),
             OutlinedButton.icon(
-              onPressed: () {
-                if (latitudController.text.trim().isEmpty ||
-                    longitudController.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Debe ingresar coordenadas del hallazgo"),
-                    ),
-                  );
-                  return;
-                }
+              onPressed: _addingFinding
+                  ? null
+                  : () {
+                      if (_addingFinding) return;
+                      setState(() {
+                        _addingFinding = true;
+                      });
+                      if (latitudController.text.trim().isEmpty ||
+                          longitudController.text.trim().isEmpty) {
+                        setState(() {
+                          _addingFinding = false;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Debe ingresar coordenadas del hallazgo",
+                            ),
+                          ),
+                        );
+                        return;
+                      }
 
-                if (observacionesController.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Debe ingresar descripción del hallazgo"),
-                    ),
-                  );
-                  return;
-                }
+                      if (observacionesController.text.trim().isEmpty) {
+                        setState(() {
+                          _addingFinding = false;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Debe ingresar descripción del hallazgo",
+                            ),
+                          ),
+                        );
+                        return;
+                      }
 
-                final detalle = registroController.detalleHallazgo(
-                  hallazgoSeleccionado: hallazgoSeleccionado,
-                  vegetacionEstado: vegetacionEstado,
-                  fugaEstado: fugaEstado,
-                  soporteEstado: soporteEstado,
-                  valvulaEstado: valvulaEstado,
-                );
+                      final detalle = registroController.detalleHallazgo(
+                        hallazgoSeleccionado: hallazgoSeleccionado,
+                        vegetacionEstado: vegetacionEstado,
+                        fugaEstado: fugaEstado,
+                        soporteEstado: soporteEstado,
+                        valvulaEstado: valvulaEstado,
+                      );
 
-                final nuevoHallazgo = HallazgoInspeccion(
-                  tipo: hallazgoSeleccionado,
-                  detalle: detalle,
-                  latitud: latitudController.text.trim(),
-                  longitud: longitudController.text.trim(),
-                  descripcion: observacionesController.text.trim(),
-                  foto1Path: foto1?.path,
-                  foto2Path: foto2?.path,
-                );
+                      final nuevoHallazgo = HallazgoInspeccion(
+                        tipo: hallazgoSeleccionado,
+                        detalle: detalle,
+                        latitud: latitudController.text.trim(),
+                        longitud: longitudController.text.trim(),
+                        descripcion: observacionesController.text.trim(),
+                        foto1Path: foto1?.path,
+                        foto2Path: foto2?.path,
+                      );
 
-                setState(() {
-                  hallazgosRegistrados.add(nuevoHallazgo);
+                      setState(() {
+                        hallazgosRegistrados.add(nuevoHallazgo);
 
-                  latitudController.clear();
-                  longitudController.clear();
-                  observacionesController.clear();
-                  foto1 = null;
-                  foto2 = null;
-                });
+                        latitudController.clear();
+                        longitudController.clear();
+                        observacionesController.clear();
+                        foto1 = null;
+                        foto2 = null;
+                        _addingFinding = false;
+                      });
 
-                guardarBorradorLocal();
+                      guardarBorradorLocal();
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text("Hallazgo agregado: ${nuevoHallazgo.tipo}"),
-                  ),
-                );
-              },
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            "Hallazgo agregado: ${nuevoHallazgo.tipo}",
+                          ),
+                        ),
+                      );
+                    },
               icon: const Icon(Icons.drafts),
               label: const Text("AGREGAR HALLAZGO A BORRADOR"),
               style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(
+                  double.infinity,
+                  LinerbTouchTarget.secondaryButtonHeight,
+                ),
               ),
             ),
             const SizedBox(height: 12),
 
             ElevatedButton.icon(
-              onPressed: () {
-                if (responsableController.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "Debe ingresar el responsable de la inspección",
-                      ),
-                    ),
-                  );
-                  return;
-                }
+              onPressed: _finalizing
+                  ? null
+                  : () async {
+                      if (_finalizing) return;
+                      setState(() {
+                        _finalizing = true;
+                      });
+                      if (responsableController.text.trim().isEmpty) {
+                        setState(() {
+                          _finalizing = false;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Debe ingresar el responsable de la inspección",
+                            ),
+                          ),
+                        );
+                        return;
+                      }
 
-                final hallazgosSeleccionados = hallazgosRegistrados;
+                      final hallazgosSeleccionados = hallazgosRegistrados;
 
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ResumenInspeccionPage(
-                      usuario: widget.usuario,
-                      tipoLinea: widget.tipoLinea,
-                      seleccionLinea: widget.seleccionLinea,
-                      responsable: responsableController.text.trim(),
-                      estadoLinea: estadoLinea,
-                      puntoReferencia: puntoReferenciaController.text,
-                      latitud: latitudController.text,
-                      longitud: longitudController.text,
-                      observaciones: observacionesController.text,
-                      hallazgos: hallazgosSeleccionados,
-                      soporteEstado: soporteEstado,
-                      valvulaEstado: valvulaEstado,
-                      vegetacionEstado: vegetacionEstado,
-                      fugaEstado: fugaEstado,
-                    ),
-                  ),
-                );
-              },
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ResumenInspeccionPage(
+                            usuario: widget.usuario,
+                            tipoLinea: widget.tipoLinea,
+                            seleccionLinea: widget.seleccionLinea,
+                            responsable: responsableController.text.trim(),
+                            estadoLinea: estadoLinea,
+                            puntoReferencia: puntoReferenciaController.text,
+                            latitud: latitudController.text,
+                            longitud: longitudController.text,
+                            observaciones: observacionesController.text,
+                            hallazgos: hallazgosSeleccionados,
+                            soporteEstado: soporteEstado,
+                            valvulaEstado: valvulaEstado,
+                            vegetacionEstado: vegetacionEstado,
+                            fugaEstado: fugaEstado,
+                          ),
+                        ),
+                      );
+                      if (mounted) {
+                        setState(() {
+                          _finalizing = false;
+                        });
+                      }
+                    },
               icon: const Icon(Icons.check_circle),
               label: const Text("FINALIZAR INSPECCIÓN"),
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 55),
+                minimumSize: const Size(
+                  double.infinity,
+                  LinerbTouchTarget.primaryButtonHeight,
+                ),
               ),
             ),
           ],

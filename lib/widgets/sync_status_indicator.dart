@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/di/app_dependencies.dart';
+import '../core/theme/ui_constants.dart';
 import '../models/sync_status_snapshot.dart';
 import '../pages/sync/sync_status_page.dart';
 import '../services/automatic_sync_coordinator.dart';
@@ -26,8 +27,12 @@ class SyncStatusIndicator extends StatelessWidget {
           child: TextButton.icon(
             style: TextButton.styleFrom(
               foregroundColor: Colors.white,
+              minimumSize: const Size(
+                LinerbTouchTarget.min,
+                LinerbTouchTarget.min,
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              tapTargetSize: MaterialTapTargetSize.padded,
             ),
             onPressed: () {
               Navigator.push(

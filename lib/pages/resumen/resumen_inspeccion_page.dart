@@ -5,6 +5,7 @@ import 'package:printing/printing.dart';
 
 import '../../controllers/inspection_registration_controller.dart';
 import '../../core/di/app_dependencies.dart';
+import '../../core/theme/ui_constants.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/hallazgo_inspeccion.dart';
 import '../../models/inspeccion.dart';
@@ -61,6 +62,7 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
   final LocalPhotoService photoService = AppDependencies.localPhotoService;
   late final InspectionPdfService pdfService;
   late TextEditingController observacionGeneralController;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -195,48 +197,68 @@ class _ResumenInspeccionPageState extends State<ResumenInspeccionPage> {
             ),
             const SizedBox(height: 25),
             ElevatedButton.icon(
-              onPressed: () async {
-                await generarPdf();
-                if (!mounted) return;
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      if (_saving) return;
+                      setState(() {
+                        _saving = true;
+                      });
+                      try {
+                        await generarPdf();
+                        if (!mounted) return;
 
-                final nuevaInspeccion = Inspeccion(
-                  linea: widget.seleccionLinea,
-                  tipoLinea: widget.tipoLinea,
-                  responsable: widget.responsable,
-                  fecha: DateTime.now(),
-                  estadoLinea: widget.estadoLinea,
-                  puntoReferencia: widget.puntoReferencia,
-                  observaciones: observacionGeneralController.text.trim(),
-                );
+                        final nuevaInspeccion = Inspeccion(
+                          linea: widget.seleccionLinea,
+                          tipoLinea: widget.tipoLinea,
+                          responsable: widget.responsable,
+                          fecha: DateTime.now(),
+                          estadoLinea: widget.estadoLinea,
+                          puntoReferencia: widget.puntoReferencia,
+                          observaciones: observacionGeneralController.text
+                              .trim(),
+                        );
 
-                inspectionRepository.agregarInspeccion(nuevaInspeccion);
+                        inspectionRepository.agregarInspeccion(nuevaInspeccion);
 
-                await inspectionRepository.guardarInspeccionCompleta(
-                  nuevaInspeccion,
-                  widget.hallazgos,
-                );
+                        await inspectionRepository.guardarInspeccionCompleta(
+                          nuevaInspeccion,
+                          widget.hallazgos,
+                        );
 
-                await registroController.borrarBorrador();
-                unawaited(
-                  AppDependencies.automaticSyncCoordinator
-                      .notifyInspectionFinalized(),
-                );
+                        await registroController.borrarBorrador();
+                        unawaited(
+                          AppDependencies.automaticSyncCoordinator
+                              .notifyInspectionFinalized(),
+                        );
 
-                if (!context.mounted) return;
+                        if (!context.mounted) return;
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Inspección guardada permanentemente"),
-                  ),
-                );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Inspección guardada permanentemente",
+                            ),
+                          ),
+                        );
 
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
+                        Navigator.pop(context);
+                        Navigator.pop(context);
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            _saving = false;
+                          });
+                        }
+                      }
+                    },
               icon: const Icon(Icons.save),
               label: const Text("CONFIRMAR Y GUARDAR"),
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 55),
+                minimumSize: const Size(
+                  double.infinity,
+                  LinerbTouchTarget.primaryButtonHeight,
+                ),
               ),
             ),
           ],
