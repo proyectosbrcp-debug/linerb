@@ -72,7 +72,7 @@ String syncStatusLabel(SyncStatusSnapshot snapshot) {
     SyncPhase.synchronized =>
       snapshot.pendingCount > 0
           ? '${snapshot.pendingCount} cambios pendientes'
-          : 'Actualizado',
+          : 'Pendiente de sincronizar',
     SyncPhase.stopped => 'Sincronización detenida',
     SyncPhase.idle =>
       snapshot.pendingCount > 0

@@ -36,6 +36,8 @@ class AutomaticSyncCoordinator {
   Timer? _retryTimer;
   Timer? _connectivityTimer;
   bool _isRunning = false;
+  bool _queuedCycleRequested = false;
+  SyncTrigger _queuedTrigger = SyncTrigger.manual;
   bool _disposed = false;
   bool _connectivityAvailable = true;
 
@@ -93,8 +95,19 @@ class AutomaticSyncCoordinator {
   }
 
   Future<void> syncNow({SyncTrigger trigger = SyncTrigger.manual}) async {
+    return _syncNow(trigger: trigger, queuedCycle: false);
+  }
+
+  Future<void> _syncNow({
+    required SyncTrigger trigger,
+    required bool queuedCycle,
+  }) async {
     if (_disposed) return;
     if (_isRunning) {
+      if (!queuedCycle) {
+        _queuedCycleRequested = true;
+        _queuedTrigger = trigger;
+      }
       AppLogger.info('Sync ignorado: ciclo ya en curso');
       return;
     }
@@ -236,6 +249,11 @@ class AutomaticSyncCoordinator {
       );
     } finally {
       _isRunning = false;
+      if (!queuedCycle && _queuedCycleRequested && !_disposed) {
+        final nextTrigger = _queuedTrigger;
+        _queuedCycleRequested = false;
+        unawaited(_syncNow(trigger: nextTrigger, queuedCycle: true));
+      }
     }
   }
 
@@ -280,6 +298,7 @@ class AutomaticSyncCoordinator {
     _connectivityTimer?.cancel();
     _connectivityTimer = null;
     _isRunning = false;
+    _queuedCycleRequested = false;
     _publish(_snapshot.copyWith(phase: SyncPhase.stopped));
   }
 

@@ -21,6 +21,7 @@ import 'package:linerb/services/sync_worker.dart';
 import 'package:linerb/storage/auth_session_storage.dart';
 import 'package:linerb/storage/sync_metadata_storage.dart';
 import 'package:linerb/storage/sync_queue_storage.dart';
+import 'package:linerb/storage/sync_status_storage.dart';
 import 'package:linerb/widgets/sync_status_indicator.dart';
 
 void main() {
@@ -144,6 +145,31 @@ void main() {
       expect(harness.remote.syncEntrances, 1);
     });
 
+    test(
+      'solicitud concurrente dispara como maximo un ciclo adicional',
+      () async {
+        final harness = _Harness(authenticatedRole: UserRole.inspector);
+        harness.queue.entries.add(_entry('i1'));
+        harness.remote.delay = const Duration(milliseconds: 40);
+
+        final firstCycle = harness.coordinator.syncNow(
+          trigger: SyncTrigger.manual,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        harness.queue.entries.add(_entry('i2'));
+        await harness.coordinator.syncNow(
+          trigger: SyncTrigger.inspectionFinalized,
+        );
+        await harness.coordinator.syncNow(trigger: SyncTrigger.periodic);
+        await firstCycle;
+        await Future<void>.delayed(const Duration(milliseconds: 90));
+
+        expect(harness.remote.pushCount, 2);
+        expect(harness.remote.syncEntrances, 2);
+        expect(harness.queue.entries, isEmpty);
+      },
+    );
+
     test('logout detiene el coordinador', () {
       final harness = _Harness(authenticatedRole: UserRole.inspector);
 
@@ -151,6 +177,28 @@ void main() {
 
       expect(harness.coordinator.snapshot.phase, SyncPhase.stopped);
     });
+
+    test(
+      'reinicio convierte estado syncing persistido en fallo transitorio',
+      () async {
+        final storage = _StatusStorage(
+          restored: SyncStatusSnapshot(
+            phase: SyncPhase.syncing,
+            authenticated: true,
+            profileActive: true,
+            lastAttemptAt: DateTime(2026, 7, 31, 11),
+          ),
+        );
+        final harness = _Harness(
+          authenticatedRole: UserRole.inspector,
+          statusStorage: storage,
+        );
+
+        await harness.coordinator.restore();
+
+        expect(harness.coordinator.snapshot.phase, SyncPhase.transientFailure);
+      },
+    );
 
     test('dispose cierra recursos sin lanzar', () async {
       final harness = _Harness(authenticatedRole: UserRole.inspector);
@@ -190,6 +238,116 @@ void main() {
 
       expect(category, SyncErrorCategory.permission);
       expect(message, isNot(contains('permission-denied')));
+    });
+  });
+
+  group('Sync Sprint 4.7 roles y etiquetas', () {
+    test(
+      'administrator supervisor e inspector hacen push y pull permitido',
+      () async {
+        for (final role in const [
+          UserRole.administrator,
+          UserRole.supervisor,
+          UserRole.inspector,
+        ]) {
+          final harness = _Harness(authenticatedRole: role);
+          harness.queue.entries.add(_entry('i-${role.name}'));
+
+          await harness.coordinator.syncNow(trigger: SyncTrigger.manual);
+
+          expect(harness.remote.pushCount, 1);
+          expect(harness.coordinator.snapshot.canPush, isTrue);
+          expect(harness.coordinator.snapshot.canPull, isTrue);
+        }
+      },
+    );
+
+    test('viewer nunca hace push y no descarta pendientes', () async {
+      final harness = _Harness(authenticatedRole: UserRole.viewer);
+      harness.queue.entries.add(_entry('viewer-old'));
+
+      await harness.coordinator.syncNow(trigger: SyncTrigger.manual);
+
+      expect(harness.remote.pushCount, 0);
+      expect(harness.queue.entries, hasLength(1));
+      expect(harness.coordinator.snapshot.isTrulySynchronized, isFalse);
+    });
+
+    test('SyncStatusIndicator no muestra Actualizado sin exito real', () {
+      final valid = SyncStatusSnapshot(
+        phase: SyncPhase.synchronized,
+        authenticated: true,
+        profileActive: true,
+        lastSuccessfulSyncAt: DateTime(2026, 7, 31),
+      );
+
+      expect(syncStatusLabel(valid), 'Actualizado');
+      expect(
+        syncStatusLabel(
+          const SyncStatusSnapshot(
+            phase: SyncPhase.synchronized,
+            authenticated: true,
+            profileActive: true,
+          ),
+        ),
+        isNot('Actualizado'),
+      );
+      expect(
+        syncStatusLabel(valid.copyWith(pendingCount: 1)),
+        isNot('Actualizado'),
+      );
+      expect(
+        syncStatusLabel(valid.copyWith(failedCount: 1)),
+        isNot('Actualizado'),
+      );
+      expect(
+        syncStatusLabel(valid.copyWith(conflictCount: 1)),
+        isNot('Actualizado'),
+      );
+    });
+
+    test('SyncStatusIndicator cubre estados visibles principales', () {
+      expect(
+        syncStatusLabel(const SyncStatusSnapshot(phase: SyncPhase.syncing)),
+        'Sincronizando...',
+      );
+      expect(
+        syncStatusLabel(
+          const SyncStatusSnapshot(
+            phase: SyncPhase.pendingChanges,
+            pendingCount: 3,
+          ),
+        ),
+        '3 cambios pendientes',
+      );
+      expect(
+        syncStatusLabel(
+          const SyncStatusSnapshot(phase: SyncPhase.waitingForConnectivity),
+        ),
+        contains('Sin conex'),
+      );
+      expect(
+        syncStatusLabel(
+          const SyncStatusSnapshot(phase: SyncPhase.waitingForAuthentication),
+        ),
+        contains('requerida'),
+      );
+      expect(
+        syncStatusLabel(
+          const SyncStatusSnapshot(phase: SyncPhase.transientFailure),
+        ),
+        'Error temporal',
+      );
+      expect(
+        syncStatusLabel(
+          const SyncStatusSnapshot(phase: SyncPhase.permissionDenied),
+        ),
+        'Permiso insuficiente',
+      );
+      expect(
+        syncStatusLabel(const SyncStatusSnapshot(phase: SyncPhase.conflict)),
+        'Conflicto pendiente',
+      );
     });
   });
 
@@ -326,10 +484,15 @@ class _Harness {
   final _Queue queue = _Queue();
   final _Remote remote = _Remote();
   final _Metadata metadata = _Metadata();
+  final SyncStatusStorage? statusStorage;
   late final AuthController auth;
   late final AutomaticSyncCoordinator coordinator;
 
-  _Harness({UserRole? authenticatedRole, bool active = true}) {
+  _Harness({
+    UserRole? authenticatedRole,
+    bool active = true,
+    this.statusStorage,
+  }) {
     auth = AuthController(
       authRepository: _AuthRepository(),
       userProfileRepository: _UserProfileRepository(),
@@ -358,6 +521,7 @@ class _Harness {
       queueStorage: queue,
       authController: auth,
       permissionService: const PermissionService(),
+      statusStorage: statusStorage,
       runtimeStatusProvider: () => RuntimeInitializationStatus.ready,
       clock: const _FixedClock(),
       periodicInterval: const Duration(minutes: 1),
@@ -606,4 +770,19 @@ class _AuthSessionStorage implements AuthSessionStorage {
 
   @override
   Future<void> saveLastValidProfile(UserProfile profile) async {}
+}
+
+class _StatusStorage implements SyncStatusStorage {
+  SyncStatusSnapshot? restored;
+  SyncStatusSnapshot? saved;
+
+  _StatusStorage({this.restored});
+
+  @override
+  Future<SyncStatusSnapshot?> restore() async => restored;
+
+  @override
+  Future<void> save(SyncStatusSnapshot snapshot) async {
+    saved = snapshot;
+  }
 }

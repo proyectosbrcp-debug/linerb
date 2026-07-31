@@ -1,43 +1,91 @@
-# Sprint 4.7 - Reporte de validación
+# Sprint 4.7 - Reporte de revalidación final
 
-Fecha de validación: 2026-07-31.
+Fecha de revalidación: 2026-07-31.
 
 ## Declaración
 
-SPRINT 4.7 NO CERRADO.
+SPRINT 4.7 CERRADO.
 
-Causa exacta: durante la auditoría inicial se confirmó que Sprint 4.5 no había dejado completo el prerrequisito declarado para este sprint. En particular, no existía `AutomaticSyncCoordinator` y `SyncWorker` no integraba todavía el ciclo completo con pull incremental, estado central, disparadores operativos, prevención de concurrencia y observabilidad. En este sprint se corrigió lo indispensable para que la observabilidad represente el estado real, pero por la regla explícita del alcance no se declara cerrado cuando los prerrequisitos no estaban completos al iniciar.
+Sprint 4.5.1 quedó cerrado antes de esta revalidación, por lo que los prerrequisitos que habían impedido cerrar Sprint 4.7 ya están corregidos y validados:
 
-Validación adicional pendiente para cierre formal: existe prueba local de Firestore Rules con contextos autenticados, pero no se ejecutó una matriz end-to-end completa usando Auth Emulator + Firestore Emulator para todos los escenarios solicitados de sincronización operativa.
+- pull incremental con cursor compuesto `updated_at + global_id`;
+- cursores separados para `inspections` y `findings`;
+- hallazgos remotos en `findings/{global_id}`;
+- `RemoteSyncApplier` aplica remoto en SQLite sin reencolar;
+- Last Write Wins probado;
+- Auth Emulator + Firestore Emulator aprobados.
+
+## Defectos encontrados durante esta revalidación
+
+1. `AutomaticSyncCoordinator` ignoraba solicitudes concurrentes si ya había un ciclo activo. El criterio de Sprint 4.7 exige combinar esas solicitudes y permitir como máximo un ciclo adicional cuando aparecen cambios durante un ciclo.
+2. `SyncStatusIndicator` podía mostrar `Actualizado` cuando la fase era `synchronized` aunque no existiera una sincronización exitosa real conocida.
+
+## Defectos corregidos
+
+- `AutomaticSyncCoordinator` ahora marca una solicitud concurrente como ciclo adicional pendiente y ejecuta como máximo un ciclo extra cuando termina el ciclo activo.
+- `SyncStatusIndicator` solo muestra `Actualizado` cuando `SyncStatusSnapshot.isTrulySynchronized` es verdadero.
+- Se agregaron pruebas para concurrencia, reinicio tras `syncing`, roles, viewer sin push y etiquetas visibles.
+
+## Matriz de revalidación
+
+| Área | Resultado |
+|---|---|
+| Coordinador usa `SyncWorker` real | OK |
+| Integración con cursores 4.5.1 | OK |
+| No duplica push/pull | OK |
+| No hay ciclos paralelos | OK |
+| Solicitudes concurrentes se combinan | OK |
+| Máximo un ciclo adicional por solicitud durante ciclo activo | OK |
+| “Actualizado” solo con éxito real | OK |
+| Viewer nunca hace push | OK |
+| Viewer conserva pendientes antiguos | OK |
+| Logout/stop detiene recursos | OK |
+| Reinicio con `syncing` persistido no queda colgado | OK |
+| Backoff con jitter determinista | OK |
+| Error técnico no se expone en UI | OK |
+| Dashboard continúa desde SQLite | OK |
+| Historial continúa desde SQLite | OK |
+| Avance continúa desde SQLite | OK |
+| Fotos/PDF/rutas/mapas/borradores excluidos | OK |
+| Auth + Firestore Emulator | OK |
+| APK debug | OK |
+
+## Resultados por rol
+
+- `administrator`: push y pull permitidos.
+- `supervisor`: push y pull permitidos.
+- `inspector`: push y pull permitidos.
+- `viewer`: pull permitido, push bloqueado; no descarta pendientes y no marca sincronizado si existen pendientes.
+
+## Estados visuales revalidados
+
+- `Sincronizando...`
+- `Actualizado`
+- `N cambios pendientes`
+- `Sin conexión`
+- `Sesión requerida`
+- `Error temporal`
+- `Permiso insuficiente`
+- `Conflicto pendiente`
+
+El indicador incluye texto visible y no depende solo del color.
 
 ## Resultados de comandos
 
-- `dart format .`: OK. Resultado final observado: `Formatted 112 files (0 changed)`.
-- `flutter analyze`: OK. Resultado exacto: `No issues found! (ran in 32.7s)`.
-- `flutter test test/sync_sprint_4_7_test.dart`: OK. Resultado exacto: `+20: All tests passed!`.
-- `flutter test`: OK. Resultado exacto: `+207: All tests passed!`.
+- `dart format .`: OK. Resultado final: `Formatted 113 files (0 changed)`.
+- `flutter analyze`: OK. Resultado exacto: `No issues found! (ran in 113.6s)`.
+- `flutter test test/sync_sprint_4_7_test.dart`: OK. Resultado exacto: `+26: All tests passed!`.
+- `flutter test test/sync_sprint_4_5_1_test.dart`: OK. Resultado exacto: `+13: All tests passed!`.
+- `flutter test`: OK. Resultado exacto: `+226: All tests passed!`.
+- Auth Emulator + Firestore Emulator: OK. Comando: `firebase.cmd emulators:exec --config ..\firebase.json --project linerb --only auth,firestore "npm test"`. Resultado: `tests 10`, `pass 10`, `fail 0`, `duration_ms 9799.4149`.
 - `flutter build apk --debug`: OK. Resultado exacto: `√ Built build\app\outputs\flutter-apk\app-debug.apk`.
-- `git diff --check`: OK, exit code 0. No errores de whitespace. Solo advertencias CRLF de Git en archivos modificados.
-
-## Pruebas con emuladores
-
-Comando ejecutado:
-
-`firebase.cmd emulators:exec --config ..\firebase.json --project linerb --only firestore "npm test"` desde `firebase_tests/`.
-
-Resultado:
-
-- Firestore Emulator inició correctamente.
-- `firebase_tests/firestore_rules_emulator_test.mjs`: 9 pruebas aprobadas.
-- Resultado exacto resumido: `tests 9`, `pass 9`, `fail 0`, `duration_ms 14857.2557`.
-
-Límite: esta validación ejercita Firestore Rules con `@firebase/rules-unit-testing` y contextos autenticados, pero no cubre Auth Emulator real ni una prueba end-to-end completa de sincronización con Auth + Firestore.
+- `git diff --check`: OK, exit code 0. No errores de whitespace. Solo advertencias CRLF de Git.
 
 ## Check opt-in de robustez
 
-Cubierto por `test/sync_sprint_4_7_test.dart`:
+Cubierto por `test/sync_sprint_4_7_test.dart` y `test/sync_sprint_4_5_1_test.dart`:
 
-- estado sincronizado real;
+- definición estricta de sincronizado;
 - pendientes;
 - sin conexión;
 - sin sesión;
@@ -46,23 +94,30 @@ Cubierto por `test/sync_sprint_4_7_test.dart`:
 - conflictos;
 - operación atascada;
 - backoff con jitter;
-- no concurrencia en sincronización manual;
+- no concurrencia;
+- ciclo adicional máximo;
 - logout/stop;
 - dispose;
-- prueba de estrés moderada con 100 inspecciones, hallazgos, fallos parciales y verificación de no duplicados.
+- reinicio con ciclo interrumpido;
+- roles;
+- prueba de estrés moderada con 100 inspecciones, hallazgos, fallos parciales y verificación de no duplicados;
+- cursores compuestos;
+- Last Write Wins;
+- exclusiones de datos locales.
 
-## Observaciones
+## Limitaciones pendientes
 
 - El APK compila con una advertencia preexistente de Flutter/Kotlin Gradle Plugin para `package_info_plus`; no bloquea el build debug.
-- `git diff --check` reporta solo advertencias CRLF, sin errores.
-- Se corrigió un defecto real encontrado durante validación: si SQLite no estaba disponible al restaurar el snapshot de sincronización, el coordinador propagaba la excepción. Ahora publica un estado degradado/transientFailure y no bloquea el arranque.
+- Persisten advertencias CRLF de Git; no son errores de `git diff --check`.
 
 ## Confirmaciones de alcance
 
 - SQLite continúa siendo la única base operativa.
-- Firestore funciona únicamente como mecanismo remoto de intercambio.
-- La UI y el dashboard no consultan Firestore directamente.
-- No se modificó el informe PDF del Sprint 4.6.
+- Firestore continúa siendo únicamente mecanismo remoto de intercambio.
+- La UI y dashboard no consultan Firestore directamente.
+- Viewer no realiza push.
+- No existen timers/listeners duplicados detectados en la revalidación.
+- No se modificó el informe PDF.
 - No se agregó Firebase Storage.
 - No se sincronizan fotografías.
 - No se sincronizan rutas locales.
